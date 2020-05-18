@@ -23,9 +23,9 @@ const validationRules =
                                 "ccc"
                             ]
                         },
-                        "relationsTopGroup": {
+                        "constraintsTopGroup": {
                             "operator": "AND",
-                            "relationsSubGroups": [
+                            "constraintsSubGroups": [
                                 {
                                     "operator": "AND",
                                     "constraints": [
@@ -41,9 +41,9 @@ const validationRules =
                         }
                     },
                     {
-                        "relationsTopGroup": {
+                        "constraintsTopGroup": {
                             "operator": "AND",
-                            "relationsSubGroups": [
+                            "constraintsSubGroups": [
                                 {
                                     "operator": "OR",
                                     "constraints": [
@@ -129,15 +129,31 @@ const validationRules =
             "reservation": {
                 "someString": [
                     {
-                        "relationsTopGroup": {
+                        "constraintsTopGroup": {
                             "operator": "AND",
-                            "relationsSubGroups": [
+                            "constraintsSubGroups": [
                                 {
                                     "operator": "AND",
                                     "constraints": [
                                         {
                                             "property": "someString",
                                             "type": "EQUALS_NOT_NULL"
+                                        },
+                                        {
+                                            "property": "someDate",
+                                            "type": "EQUALS_ANY",
+                                            "values": [
+                                                "2020-02-12T08:15:59.338Z"
+                                            ]
+
+                                        },
+                                        {
+                                            "property": "someDate",
+                                            "type": "EQUALS_ANY_REF",
+                                            "values": [
+                                                "otherDate"
+                                            ]
+
                                         }
                                     ]
                                 }
@@ -199,15 +215,28 @@ function getPropertyValue(propertyName, object) {
 function equalsConstraintIsMet(condition, propValue) {
     switch (condition.type) {
         case 'EQUALS_ANY':
-            return condition.values.indexOf(propValue) !== -1;
         case 'EQUALS_NONE':
-            return condition.values.indexOf(propValue) === -1;
+            let propAsDate = new Date(propValue);
+            if (propAsDate instanceof Date && !isNaN(propAsDate)) {
+                let matchLength =  condition.values.map(v => new Date(v)).filter(valueAsDate => +valueAsDate === +propAsDate).length;
+                if (condition.type === 'EQUALS_ANY') {
+                    return matchLength > 0;
+                } else {
+                    return matchLength = 0;
+                }
+            } else {
+                if (condition.type === 'EQUALS_ANY') {
+                    return condition.values.indexOf(propValue) !== -1;
+                } else {
+                    return condition.values.indexOf(propValue) === -1;
+                }
+            }
         case 'EQUALS_NULL':
             return propValue === null;
         case 'EQUALS_NOT_NULL':
             return propValue !== null;
         default:
-            console.error("Equals constraint type not supported: ", condition.type)
+            console.error("Unknown equals constraint type: ", condition.type)
     }
     return false;
 }
@@ -221,13 +250,23 @@ function equalsRefConstraintIsMet(condition, propValue, object) {
         case 'EQUALS_NONE_REF':
             //console.log(condition.values.map(v => findPropertyValue(v, object)));
             let refValues = condition.values.map(v => getPropertyValue(v, object));
-            if (condition.type === 'EQUALS_ANY_REF') {
-                return refValues.indexOf(propValue) !== -1;
+            let propAsDate = new Date(propValue);
+            if (propAsDate instanceof Date && !isNaN(propAsDate)) {
+                let matchLength =  refValues.map(v => new Date(v)).filter(valueAsDate => +valueAsDate === +propAsDate).length;
+                if (condition.type === 'EQUALS_ANY_REF') {
+                    return matchLength > 0;
+                } else {
+                    return matchLength = 0;
+                }
             } else {
-                return refValues.indexOf(propValue) === -1;
+                if (condition.type === 'EQUALS_ANY_REF') {
+                    return refValues.indexOf(propValue) !== -1;
+                } else {
+                    return refValues.indexOf(propValue) === -1;
+                }
             }
         default:
-            console.error("Equals ref constraint type not supported: ", condition.type)
+            console.error("Unknown equals ref constraint type: ", condition.type)
     }
     return false;
 }
@@ -237,7 +276,7 @@ function equalsRefConstraintIsMet(condition, propValue, object) {
  */
 function regexConstraintIsMet(condition, propValue) {
     if (condition.type !== 'REGEX_ANY') {
-        console.error("Regex constraint type not supported: ", condition.type)
+        console.error("Unknown regex constraint type: ", condition.type)
         return true;
     }
     for (var regex of condition.values) {
@@ -255,11 +294,11 @@ function regexConstraintIsMet(condition, propValue) {
  */
 function sizeConstraintIsMet(condition, propValue) {
     if (condition.type !== 'SIZE') {
-        console.error("Size constraint type not supported: ", condition.type)
+        console.error("Unknown size constraint type: ", condition.type)
         return false;
     }
     if (condition.min === undefined && condition.max === undefined) {
-        console.error("Size constraint must have either min or max property: ", condition)
+        console.error("Size constraint must have at least 'min' or 'max' property: ", condition)
         return false;
     }
     // Check min <= length <= max
@@ -271,7 +310,33 @@ function sizeConstraintIsMet(condition, propValue) {
         return (condition.min === undefined || size >= condition.min)
             && (condition.max === undefined || size <= condition.max)
     } else {
-        console.log("ERROR: Unknown type of size constraint value: ", typeof propValue)
+        console.error("Unsupported type of size constraint value:", typeof propValue)
+    }
+    return false;
+}
+
+/**
+ * Validates date constraint.
+ */
+function dateConstraintIsMet(condition, propValue) {
+    if (condition.days === undefined) {
+        console.error("Date constraint must have either 'days' property: ", condition)
+        return false;
+    }
+    let propAsDate = new Date(propValue);
+    if (!(propAsDate instanceof Date) || isNaN(propAsDate)) {
+        console.error("The property value is not a valid date: ", propValue)
+        return false;
+    }
+    switch (condition.type) {
+        case 'DATE_FUTURE':
+            propAsDate.setDate(propAsDate.getDate() - condition.days);
+            return propAsDate >= new Date();
+        case 'DATE_PAST':
+            propAsDate.setDate(propAsDate.getDate() + condition.days);
+            return propAsDate <= new Date();
+        default:
+            console.error("Unknown date constraint: ", condition.type)
     }
     return false;
 }
@@ -304,6 +369,10 @@ function constraintIsMet(condition, object) {
         case 'SIZE':
             isMet =  sizeConstraintIsMet(condition, propValue);
             break;
+        case 'DATE_FUTURE':
+        case 'DATE_PAST':
+            isMet =  dateConstraintIsMet(condition, propValue);
+            break;
         default:
             console.error("Constraint type not supported (yet): ", condition.type)
     }
@@ -315,9 +384,9 @@ function constraintIsMet(condition, object) {
  * Validates if group constraints are met according to 'group operator' (i.e. AND resp. OR).
  * If constraints are ANDed each constraint must be met, if they are ORed only one constraint must be met.
  */
-function groupConstraintsAreMet(relationsSubGroup, object) {
-    let operator = relationsSubGroup["operator"];
-    let constraints = relationsSubGroup["constraints"];
+function groupConstraintsAreMet(constraintsSubGroup, object) {
+    let operator = constraintsSubGroup["operator"];
+    let constraints = constraintsSubGroup["constraints"];
     for (let i = 0; i < constraints.length; i++) {
         let curConstraint = constraints[i];
         let isMet = constraintIsMet(curConstraint, object);
@@ -340,14 +409,14 @@ function groupConstraintsAreMet(relationsSubGroup, object) {
  * Validates if all constraints groups are met according to 'group operator' (i.e. AND resp. OR).
  * If groups are ANDed each group must be met, if they are ORed only one group must be met.
  */
-function allConstraintsAreMet(relationsTopGroup, object) {
-    if (relationsTopGroup["relationsSubGroups"] === undefined) {
-        console.error("Should not happen: relationsSubGroups === undefined")
+function allConstraintsAreMet(constraintsTopGroup, object) {
+    if (constraintsTopGroup["constraintsSubGroups"] === undefined) {
+        console.error("Should not happen: constraintsSubGroups === undefined")
         return false;
     }
-    let operator = relationsTopGroup["operator"];
-    for (let i = 0; i < relationsTopGroup["relationsSubGroups"].length; i++) {
-        let curSubGroup = relationsTopGroup["relationsSubGroups"][i];
+    let operator = constraintsTopGroup["operator"];
+    for (let i = 0; i < constraintsTopGroup["constraintsSubGroups"].length; i++) {
+        let curSubGroup = constraintsTopGroup["constraintsSubGroups"][i];
         let constraintsAreMet = groupConstraintsAreMet(curSubGroup, object);
         console.log("groupConstraintsAreMet:", constraintsAreMet)
         if (constraintsAreMet) {
@@ -363,20 +432,20 @@ function allConstraintsAreMet(relationsTopGroup, object) {
     return (operator == "AND") ? true : false;
 }
 
-// A 'top group' w/o any 'sub groups'; should evaluate to true!
-const NO_CONSTRAINT_TOP_GROUP_VALUE = {"operator": "AND", "relationsSubGroups": []};
+// A 'top group' w/o any 'sub groups' which is evaluated to true! (see: groupConstraintsAreMet)
+const NO_CONSTRAINT_TOP_GROUP_VALUE = {"operator": "AND", "constraintsSubGroups": []};
 
-// Returns relationsTopGroup with matching permissions if exists,
-// otherwise the default relationsTopGroup (w/o any permissions) if exists,
+// Returns constraintsTopGroup with matching permissions if exists,
+// otherwise the default constraintsTopGroup (w/o any permissions) if exists,
 // otherwise NO_CONSTRAINT_REF_TOP_GROUP_VALUE
 function getMatchingConstraints(rules, userPerms) {
     let defaultConstraints; // constraints w/o any permissions
     for (let i = 0; i < rules.length; i++ ) {
         let permissions = rules[i]["permissions"];
-        let relationsTopGroup = rules[i]["relationsTopGroup"];
+        let constraintsTopGroup = rules[i]["constraintsTopGroup"];
         if (userPerms === undefined && permissions === undefined)  {
-            if (relationsTopGroup !== undefined) {
-                return relationsTopGroup;
+            if (constraintsTopGroup !== undefined) {
+                return constraintsTopGroup;
             } else {
                 return NO_CONSTRAINT_TOP_GROUP_VALUE;
             }
@@ -386,15 +455,15 @@ function getMatchingConstraints(rules, userPerms) {
                 let matchingPerms = userPerms.filter(value => permissions["values"].includes(value));
                 //console.log(permissions["values"], "intersect", userPerms, "?", matchingPerms)
                 if (matchingPerms.length > 0) {
-                    if (relationsTopGroup !== undefined) {
-                        return relationsTopGroup;
+                    if (constraintsTopGroup !== undefined) {
+                        return constraintsTopGroup;
                     } else {
                         return NO_CONSTRAINT_TOP_GROUP_VALUE;
                     }
                 }
             } else {
-                if (relationsTopGroup !== undefined) {
-                    defaultConstraints = relationsTopGroup;
+                if (constraintsTopGroup !== undefined) {
+                    defaultConstraints = constraintsTopGroup;
                 } else {
                     defaultConstraints = NO_CONSTRAINT_TOP_GROUP_VALUE;
                 }
@@ -418,7 +487,7 @@ function checkTypeCondition(typeRules, property, object, userPerms) {
     return false; // no rules defined for type
 };
 
-isMandatory = function (typeName, property, object, userPerms) {
+function isMandatory(typeName, property, object, userPerms) {
     //console.log("userPerms:", userPerms, "instanceof Array?", userPerms instanceof Array);
     // TODO more param checks
     if (object === undefined) {
@@ -429,7 +498,7 @@ isMandatory = function (typeName, property, object, userPerms) {
     return checkTypeCondition(typeRules, property, object, userPerms);
 };
 
-isImmutable = function (typeName, property, object, userPerms) {
+function isImmutable(typeName, property, object, userPerms) {
     //console.log("userPerms:", userPerms, "instanceof Array?", userPerms instanceof Array);
     // TODO more param checks
     if (object === undefined) {
@@ -441,7 +510,7 @@ isImmutable = function (typeName, property, object, userPerms) {
 };
 
 // some testing ...
-reservation = {
+var reservation = {
     "id": 1,
     "number1": 1,
     "number2": 2.3,
@@ -449,11 +518,13 @@ reservation = {
     "someBool": true,
     "nullValue": null,
     "stringArray": ["one", 'two'],
-    "someMap": {"one": 1, "two": 2}
+    "someMap": {"one": 1, "two": 2},
+    "someDate": "2020-02-12T08:15:59.338+0000",
+    "otherDate": "2020-02-12T08:15:59.338Z"
 }
-result = isMandatory("reservation", "id", reservation, ["ccc", "eee"]);
-console.log("Property 'id' is mandatory: ", result);
-result = isImmutable("reservation", "someString", reservation);
+//result = isMandatory("reservation", "id", reservation, ["ccc", "eee"]);
+//console.log("Property 'id' is mandatory: ", result);
+var result = isImmutable("reservation", "someString", reservation);
 console.log("Property 'someString' is immutable: ", result);
 //result = isImmutable("reservation", "id", reservation, ["ddd", "eee"]);
 //console.dir(result);
@@ -462,3 +533,57 @@ console.log("Property 'someString' is immutable: ", result);
 //result = isMandatory("notexisting", "foo", reservation, ["aaa", "ccc"]);
 //console.dir(result);
 
+function assert(msg, expected, compare) {
+    if (expected !== compare) {
+        console.dir("Assertion failure: " +  msg + ". Expected " + expected + ", but got " + compare);
+    }
+};
+// sizeConstraintIsMet tests
+assert('Type is invalid',
+    false, sizeConstraintIsMet({"type": "SIZE_"}, "Test"));
+assert('Properties "min" and "max" are missing',
+    false, sizeConstraintIsMet({"type": "SIZE"}, "Test"));
+assert('Not a string, array or object',
+    false, sizeConstraintIsMet({"type": "SIZE", "min": 1}, 123));
+assert('String should have min size',
+    true, sizeConstraintIsMet({"type": "SIZE", "min": 1}, "T"));
+assert('String should have max size',
+    true, sizeConstraintIsMet({"type": "SIZE", "max": 10}, "Teststring"));
+assert('String should have min and max size',
+    true, sizeConstraintIsMet({"type": "SIZE","min": 1, "max": 10}, "Teststring"));
+assert('String is to short',
+    false, sizeConstraintIsMet({"type": "SIZE", "min": 11}, "Teststring"));
+assert('String is too long',
+    false, sizeConstraintIsMet({"type": "SIZE", "max": 9}, "Teststring"));
+assert('Array should have min size',
+    true, sizeConstraintIsMet({"type": "SIZE", "min": 1}, [1]));
+assert('Array should have max size',
+    true, sizeConstraintIsMet({"type": "SIZE", "max": 3}, [1 ,2, 3]));
+assert('Array is to short',
+    false, sizeConstraintIsMet({"type": "SIZE", "min": 2}, [1]));
+assert('Array is to long',
+    false, sizeConstraintIsMet({"type": "SIZE", "max": 2}, [1 ,2, 3]));
+assert('Object should have min size',
+    true, sizeConstraintIsMet({"type": "SIZE", "min": 1}, {"one": 1, "two": 2}));
+assert('Object should have max size',
+    true, sizeConstraintIsMet({"type": "SIZE", "max": 2}, {"one": 1, "two": 2}));
+assert('Object is to short',
+    false, sizeConstraintIsMet({"type": "SIZE", "min": 3}, {"one": 1, "two": 2}));
+assert('Object is to long',
+    false, sizeConstraintIsMet({"type": "SIZE", "max": 1}, {"one": 1, "two": 2}));
+
+// dateConstraintIsMet tests
+assert('expect false if property "days" is missing',
+    false, dateConstraintIsMet({"type": "DATE_FUTURE"}, new Date()));
+assert('expect true for FUTURE 0 against now',
+    true, dateConstraintIsMet({"type": "DATE_FUTURE", "days": 0}, new Date()));
+assert('expect true for PAST 0 against now',
+    true, dateConstraintIsMet({"type": "DATE_PAST", "days": 0}, new Date()));
+assert('expect false for FUTURE 1 against now',
+    false, dateConstraintIsMet({"type": "DATE_FUTURE", "days": 1}, new Date()));
+assert('expect false for PAST 1 against now',
+    false, dateConstraintIsMet({"type": "DATE_PAST", "days": 1}, new Date()));
+assert('expect true for FUTURE 1 against year 3000',
+    true, dateConstraintIsMet({"type": "DATE_FUTURE", "days": 1}, new Date("3000-01-31")));
+assert('expect true for PAST 1against year 1000',
+    true, dateConstraintIsMet({"type": "DATE_PAST", "days": 0}, new Date("1000-01-31")));

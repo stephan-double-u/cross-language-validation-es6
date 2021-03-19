@@ -23,7 +23,7 @@ export function setValidationRules(rules) {
 }
 
 export function isMandatory(typeName, property, object, userPerms) {
-    //console.log("userPerms:", userPerms, "instanceof Array?", userPerms instanceof Array);
+    // console.log("userPerms:", userPerms, "instanceof Array?", userPerms instanceof Array);
     // TODO more param checks
     if (object === undefined) {
         return false;

@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>RegressionTests</title>
+</head>
+<body>
+<div id="console"></div>
+<script type="module">
+import {setValidationRules, isMandatory, validateMandatory, isImmutable} from './CrossLanguageValidation_ES6.js';
+import {sizeConstraintIsMet, rangeConstraintIsMet, dateConstraintIsMet,
+    equalsConstraintIsMet, equalsRefConstraintIsMet, regexConstraintIsMet} from './CrossLanguageValidation_ES6.js';
+import {testValidationRules, reservation} from './RegressionTestsData_ES6.js';
+
+var console = document.getElementById("console");
+function log(text, asError) {
+    var para = document.createElement("P");
+    para.setAttribute("style", asError === true ? "color:red;" : "color:green;")
+    para.appendChild(document.createTextNode(text));
+    console.appendChild(para);
+}
+function assert(msg, expected, compare) {
+    if (expected !== compare) {
+        log("Assertion failure: " +  msg + ". Expected " + expected + ", but got " + compare, true);
+    } else {
+        log("Test o.k.: " +  msg);
+    }
+}
+setValidationRules(testValidationRules);
+
+log(">>> Testing isMandatory")
+assert('non-existing property is not mandatory',
+    false, isMandatory("reservation", "non-existing", reservation));
+assert('customer (with no conditions) is mandatory ',
+    true, isMandatory("reservation", "customer", reservation));
+assert('id is mandatory for permission "aaa"',
+    true, isMandatory("reservation", "id", reservation, ["aaa", "xxx"]));
+assert('id is mandatory for permission "bbb"',
+    true, isMandatory("reservation", "id", reservation, ["xxx", "bbb"]));
+assert('id is mandatory for permission "ccc"',
+    true, isMandatory("reservation", "id", reservation, ["ccc"]));
+assert('id is mandatory for no (matching) permission',
+    true, isMandatory("reservation", "id", reservation, ["xxx"]));
+
+log(">>> Testing validateMandatory")
+assert('id is mandatory and not null',
+    true, validateMandatory("reservation", "id", {"id": 1}));
+assert('id is mandatory but null',
+    false, validateMandatory("reservation", "id", {"id": null}));
+
+log(">>> Testing sizeConstraintIsMet")
+assert('Type property invalid',
+    false, sizeConstraintIsMet({"typ_": "SIZE"}, "Test"));
+assert('Type value is invalid',
+    false, sizeConstraintIsMet({"type": "SIZE_"}, "Test"));
+assert('Properties "min" and "max" are missing',
+    false, sizeConstraintIsMet({"type": "SIZE"}, "Test"));
+assert('Properties "min" is not typeof "number"',
+    false, sizeConstraintIsMet({"type": "SIZE", "min": 'x'}, 123));
+assert('Properties "max" is not typeof "number"',
+    false, sizeConstraintIsMet({"type": "SIZE", "max": '-1'}, 123));
+assert('Number is not allowed',
+    false, sizeConstraintIsMet({"type": "SIZE", "min": 1}, 123));
+assert('String should have min size',
+    true, sizeConstraintIsMet({"type": "SIZE", "min": 1}, "T"));
+assert('String should have max size',
+    true, sizeConstraintIsMet({"type": "SIZE", "max": 10}, "Teststring"));
+assert('String should have min and max size',
+    true, sizeConstraintIsMet({"type": "SIZE","min": 1, "max": 10}, "Teststring"));
+assert('String is to short',
+    false, sizeConstraintIsMet({"type": "SIZE", "min": 11}, "Teststring"));
+assert('String is too long',
+    false, sizeConstraintIsMet({"type": "SIZE", "max": 9}, "Teststring"));
+assert('Array should have min size',
+    true, sizeConstraintIsMet({"type": "SIZE", "min": 1}, [1]));
+assert('Array should have max size',
+    true, sizeConstraintIsMet({"type": "SIZE", "max": 3}, [1 ,2, 3]));
+assert('Array is to short',
+    false, sizeConstraintIsMet({"type": "SIZE", "min": 2}, [1]));
+assert('Array is to long',
+    false, sizeConstraintIsMet({"type": "SIZE", "max": 2}, [1 ,2, 3]));
+assert('Object should have min size',
+    true, sizeConstraintIsMet({"type": "SIZE", "min": 1}, {"one": 1, "two": 2}));
+assert('Object should have max size',
+    true, sizeConstraintIsMet({"type": "SIZE", "max": 2}, {"one": 1, "two": 2}));
+assert('Object is to short',
+    false, sizeConstraintIsMet({"type": "SIZE", "min": 3}, {"one": 1, "two": 2}));
+assert('Object is to long',
+    false, sizeConstraintIsMet({"type": "SIZE", "max": 1}, {"one": 1, "two": 2}));
+
+log(">>> Testing rangeConstraintIsMet")
+assert('Type property invalid',
+    false, rangeConstraintIsMet({"typ_": "RANGE"}, 1));
+assert('Type value is invalid',
+    false, rangeConstraintIsMet({"type": "RANGE_"}, 1));
+assert('Properties "min" and "max" are missing',
+    false, rangeConstraintIsMet({"type": "RANGE"}, 1));
+assert('Properties "min" is not typeof "number"',
+    false, rangeConstraintIsMet({"type": "RANGE", "min": 'x'}, 123));
+assert('Properties "max" is not typeof "number"',
+    false, rangeConstraintIsMet({"type": "RANGE", "max": '-1'}, 123));
+assert('String is not allowed',
+    false, rangeConstraintIsMet({"type": "RANGE", "min": 1}, "String"));
+assert('Date is not allowed',
+    false, rangeConstraintIsMet({"type": "RANGE", "min": 1}, new Date()));
+assert('Array is not allowed',
+    false, rangeConstraintIsMet({"type": "RANGE", "min": 1}, [1, 2]));
+assert('Object is not allowed',
+    false, rangeConstraintIsMet({"type": "RANGE", "min": 1}, {"one": 1, "two": 2}));
+assert('Number should be <= min',
+    true, rangeConstraintIsMet({"type": "RANGE", "min": 1}, 1));
+assert('Number should be >= max',
+    true, rangeConstraintIsMet({"type": "RANGE", "max": 2}, 2));
+assert('Number is < min',
+    false, rangeConstraintIsMet({"type": "RANGE", "min": 2}, 1));
+assert('Number is > max',
+    false, rangeConstraintIsMet({"type": "RANGE", "max": 1}, 2));
+
+// dateConstraintIsMet tests
+log(">>> Testing dateConstraintIsMet")
+assert('Property "days" is missing',
+    false, dateConstraintIsMet({"type": "DATE_FUTURE"}, new Date()));
+assert('FUTURE 0 against now',
+    false, dateConstraintIsMet({"type": "DATE_FUTURE", "days": 0}, new Date()));
+assert('PAST 0 against now',
+    false, dateConstraintIsMet({"type": "DATE_PAST", "days": 0}, new Date()));
+assert('FUTURE 1 against now',
+    false, dateConstraintIsMet({"type": "DATE_FUTURE", "days": 1}, new Date()));
+assert('PAST 1 against now',
+    false, dateConstraintIsMet({"type": "DATE_PAST", "days": 1}, new Date()));
+assert('FUTURE 1 against year 3000',
+    true, dateConstraintIsMet({"type": "DATE_FUTURE", "days": 1}, new Date("3000-01-31")));
+assert('PAST 1 against year 2020',
+    true, dateConstraintIsMet({"type": "DATE_PAST", "days": 1}, new Date("2020-01-01")));
+assert('PAST 10000 against year 2020',
+    false, dateConstraintIsMet({"type": "DATE_PAST", "days": 1000}, new Date("2020-01-01")));
+
+</script>
+</body>
+</html>

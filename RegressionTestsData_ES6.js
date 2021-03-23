@@ -103,6 +103,7 @@ export const testValidationRules =
         },
         "immutableRules": {
             "reservation": {
+                "id": []
             }
         },
         "contentRules": {

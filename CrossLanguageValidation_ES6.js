@@ -1,10 +1,14 @@
 
 let crossLanguageValidationRules;
 
+let defaultMandatoryMessage = "error.validation.mandatory";
+// let defaultImmutableMessage = "error.validation.immutable";
+// let defaultContentMessage = "error.validation.content";
+// let defaultUpdateMessage = "error.validation.update";
+
 export function setValidationRules(rules) {
     if (rules === undefined || rules === null
         || rules["schema-version"] !== "0.2"
-        || rules["schema-version"] === undefined
         || rules.mandatoryRules === undefined
         || rules.immutableRules === undefined
         || rules.contentRules === undefined
@@ -22,7 +26,7 @@ export function setValidationRules(rules) {
     }
 }
 
-export function isMandatory(typeName, property, object, userPerms) {
+export function isPropertyMandatory(typeName, property, object, userPerms) {
     // console.log("userPerms:", userPerms, "instanceof Array?", userPerms instanceof Array);
     // TODO more param checks
     if (object === undefined) {
@@ -30,14 +34,17 @@ export function isMandatory(typeName, property, object, userPerms) {
     }
     console.info("INFO - Checking mandatory rules for:", typeName, property);
     let typeRules = crossLanguageValidationRules.mandatoryRules[typeName];
-    return checkTypeRules(typeRules, property, object, userPerms);
+    return getMatchingPropertyConstraint(typeRules, property, object, userPerms) !== undefined;
 }
 
-export function validateMandatory(typeName, property, object, userPerms) {
-    return object[property] !== null && isMandatory(typeName, property, object, userPerms);
+export function validateMandatoryPropertyRules(typeName, property, object, userPerms) {
+    if (object[property] !== null && isPropertyMandatory(typeName, property, object, userPerms)) {
+        return "VALID";
+    }
+    return defaultMandatoryMessage + "." + typeName + "." + property;
 }
 
-export function isImmutable(typeName, property, object, userPerms) {
+export function isPropertyImmutable(typeName, property, object, userPerms) {
     //console.log("userPerms:", userPerms, "instanceof Array?", userPerms instanceof Array);
     // TODO more param checks
     if (object === undefined) {
@@ -45,53 +52,45 @@ export function isImmutable(typeName, property, object, userPerms) {
     }
     console.log("Checking immutable rules for:", typeName, property);
     let typeRules = crossLanguageValidationRules.immutableRules[typeName];
-    return checkTypeRules(typeRules, property, object, userPerms);
+    return getMatchingPropertyConstraint(typeRules, property, object, userPerms) !== undefined;
 }
 
-
-function checkTypeRules(typeRules, property, object, userPerms) {
-    if (typeRules !== undefined) {
-        let propertyRules = typeRules[property];
-        if (propertyRules !== undefined) {
-            let matchingConditions = getMatchingConditions(propertyRules, userPerms);
-            if (matchingConditions !== undefined) {
-                return allConditionsAreMet(matchingConditions, object);
-            }
-            return false;
-        }
+function getMatchingPropertyConstraint(typeRules, property, object, userPerms) {
+    let propertyRules = typeRules[property];
+    if (typeRules === undefined || propertyRules === undefined) {
+        return undefined;
     }
-    return false; // no rules defined for type
-}
-
-/** Returns conditionsTopGroup with matching permissions if exists,
- * otherwise the default conditionsTopGroup (w/o any permissions) if exists,
- * otherwise an 'empty' topGroup
- * TODO fix logic? ...
- **/
-function getMatchingConditions(propertyRules, userPerms) {
-    let defaultConditions; // conditions w/o any permissions
+    if (propertyRules.length === 0) {
+        return {};
+    }
+    // find first constraint with matching permission and valid conditions
     for (let i = 0; i < propertyRules.length; i++ ) {
         let permissions = propertyRules[i]["permissions"];
-        let conditionsTopGroup = getConditionsTopGroup(propertyRules[i]);
-        if (userPerms === undefined && permissions === undefined)  {
-            console.debug("DEBUG - conditionsTopGroup w/o permissions found")
-            return conditionsTopGroup;
-        } else if (userPerms !== undefined) {
-            // look for conditions with matching permission resp. default conditions
-            if (permissions !== undefined) {
-                let matchingPerms = userPerms.filter(value => permissions["values"].includes(value));
-                //console.log(permissions["values"], "intersect", userPerms, "?", matchingPerms)
-                if (matchingPerms.length > 0) {
-                    console.debug("DEBUG - conditionsTopGroup for matching permissions: ", matchingPerms)
-
-                    return conditionsTopGroup;
-                }
-            } else {
-                defaultConditions = conditionsTopGroup;
-            }
+        if (arePermissionsMatching(permissions, userPerms)
+            && allConditionsAreMet(getConditionsTopGroup(propertyRules[i]), object)) {
+            let constraint = propertyRules[i]["constraint"];
+            return constraint !== undefined ? constraint : {};
         }
     }
-    return defaultConditions;
+    // find first default constraint (w/o any permission) and valid conditions
+    for (let i = 0; i < propertyRules.length; i++ ) {
+        let permissions = propertyRules[i]["permissions"];
+        if (permissions === undefined
+            && allConditionsAreMet(getConditionsTopGroup(propertyRules[i]), object)) {
+            let constraint = propertyRules[i]["constraint"];
+            return constraint !== undefined ? constraint : {};
+        }
+    }
+    return undefined;
+}
+
+function arePermissionsMatching(conditionPerms, userPerms) {
+    if (conditionPerms === undefined || userPerms === undefined) {
+        return false;
+    }
+    let matchingPerms = userPerms.filter(value => conditionPerms["values"].includes(value));
+    console.log(conditionPerms["values"], "intersect", userPerms, "?", matchingPerms)
+    return matchingPerms.length > 0;
 }
 
 function getConditionsTopGroup(propertyRule) {
@@ -300,7 +299,7 @@ export function equalsRefConstraintIsMet(constraint, propValue, object) {
                 if (constraint.type === 'EQUALS_ANY_REF') {
                     return matchLength > 0;
                 } else {
-                    return matchLength = 0;
+                    return matchLength === 0;
                 }
             } else {
                 if (constraint.type === 'EQUALS_ANY_REF') {

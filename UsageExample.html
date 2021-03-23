@@ -2,15 +2,13 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>UNDER CONSTRUCTION</title>
+    <title>WIP</title>
     <script>
         function validateForm() {
-            var x = document.forms["myForm"]["fname"].value;
-            if (x == "") {
-                var obj;
-                obj = document.getElementById("nameLabel");
-                obj.innerHTML = "Hello *";
-                alert("Name must be filled out");
+            var value = document.forms["myForm"]["nameField"].value;
+            var err = document.getElementById("nameErr")
+            if (value === "") {
+                err.innerHTML= "Name is mandatory";
                 return false;
             }
         }
@@ -22,15 +20,17 @@
     </script>
 </head>
 <body>
+WORK IN PROGRESS ...
 <form name="myForm" onsubmit="return validateForm()">
     <label for="name" id="nameLabel">Name *</label><br>
-    <input type="text" id="name" name="fname" pattern="[a-zA-Z]+" placeholder="some name" onfocusout="logAction('aaa')"><br>
-    <label for="name">Email *</label><br>
+    <input type="text" id="name" name="nameField" pattern="[a-zA-Z]+" placeholder="some name" onfocusout="logAction('name focus out')">
+    <div id="nameErr"></div>
+    <label for="email">Email *</label><br>
     <input type="email" id="email" name="email" placeholder="x@y.z" pattern=".+@.+\..+" required><br>
-    <label for="name">Age</label><br>
+    <label for="age">Age</label><br>
     <input type="number" id="age" name="age" min="10" max="80" placeholder="30" readonly><br>
-    <label for="name">Website</label><br>
-    <input type="url" id="website" name="website" pattern="https://.*\.tutsplus\.com" placeholder="https://code.tutsplus.com"><br>
+    <label for="website">Website</label><br>
+    <input type="url" id="website" name="website" pattern="https://.*\.*" placeholder="https://x.y"><br>
     <input type="submit" value="Submit">
 </form>
 <div id="logDiv"></div>

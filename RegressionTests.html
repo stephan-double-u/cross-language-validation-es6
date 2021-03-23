@@ -3,11 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <title>RegressionTests</title>
+    <style>
+        p {font-family: sans-serif;}
+        .ok {color: green;}
+        .err {color: tomato;}
+    </style>
 </head>
 <body>
 <div id="console"></div>
 <script type="module">
-import {setValidationRules, isMandatory, validateMandatory, isImmutable} from './CrossLanguageValidation_ES6.js';
+import {setValidationRules, isPropertyMandatory, validateMandatoryPropertyRules, isPropertyImmutable} from './CrossLanguageValidation_ES6.js';
 import {sizeConstraintIsMet, rangeConstraintIsMet, dateConstraintIsMet,
     equalsConstraintIsMet, equalsRefConstraintIsMet, regexConstraintIsMet} from './CrossLanguageValidation_ES6.js';
 import {testValidationRules, reservation} from './RegressionTestsData_ES6.js';
@@ -15,7 +20,7 @@ import {testValidationRules, reservation} from './RegressionTestsData_ES6.js';
 var console = document.getElementById("console");
 function log(text, asError) {
     var para = document.createElement("P");
-    para.setAttribute("style", asError === true ? "color:red;" : "color:green;")
+    para.setAttribute("class", asError === true ? "err" : "ok")
     para.appendChild(document.createTextNode(text));
     console.appendChild(para);
 }
@@ -28,25 +33,31 @@ function assert(msg, expected, compare) {
 }
 setValidationRules(testValidationRules);
 
-log(">>> Testing isMandatory")
+log(">>> Testing isPropertyMandatory")
 assert('non-existing property is not mandatory',
-    false, isMandatory("reservation", "non-existing", reservation));
+    false, isPropertyMandatory("reservation", "non-existing", reservation));
 assert('customer (with no conditions) is mandatory ',
-    true, isMandatory("reservation", "customer", reservation));
+    true, isPropertyMandatory("reservation", "customer", reservation));
 assert('id is mandatory for permission "aaa"',
-    true, isMandatory("reservation", "id", reservation, ["aaa", "xxx"]));
+    true, isPropertyMandatory("reservation", "id", reservation, ["aaa", "xxx"]));
 assert('id is mandatory for permission "bbb"',
-    true, isMandatory("reservation", "id", reservation, ["xxx", "bbb"]));
+    true, isPropertyMandatory("reservation", "id", reservation, ["xxx", "bbb"]));
 assert('id is mandatory for permission "ccc"',
-    true, isMandatory("reservation", "id", reservation, ["ccc"]));
+    true, isPropertyMandatory("reservation", "id", reservation, ["ccc"]));
 assert('id is mandatory for no (matching) permission',
-    true, isMandatory("reservation", "id", reservation, ["xxx"]));
+    true, isPropertyMandatory("reservation", "id", reservation, ["xxx"]));
 
-log(">>> Testing validateMandatory")
+
+log(">>> Testing isPropertyImmutable")
+assert('id is immutable for no (matching) permission',
+    true, isPropertyImmutable("reservation", "id", reservation));
+
+log(">>> Testing validateMandatoryPropertyRules")
 assert('id is mandatory and not null',
-    true, validateMandatory("reservation", "id", {"id": 1}));
+    true, validateMandatoryPropertyRules("reservation", "id", {"id": 1}) === "VALID");
 assert('id is mandatory but null',
-    false, validateMandatory("reservation", "id", {"id": null}));
+    true, validateMandatoryPropertyRules("reservation", "id", {"id": null}) === "error.validation.mandatory.reservation.id");
+
 
 log(">>> Testing sizeConstraintIsMet")
 assert('Type property invalid',

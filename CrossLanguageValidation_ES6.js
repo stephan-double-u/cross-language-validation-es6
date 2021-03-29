@@ -415,3 +415,71 @@ export function dateConstraintIsMet(constraint, propValue) {
     }
     return false;
 }
+
+
+// Inflate property with multi-index definitions to properties with single-index definitions, e.g.
+// "foo.bar[0,1].zoo.baz[2-3]" ->
+// ["foo.bar[0].zoo.baz[2]", "foo.bar[0].zoo.baz[3]", "foo.bar[1].zoo.baz[2]", "foo.bar[1].zoo.baz[3]"]
+let INDEX_PARTS_REGEX = /^(.+)\[(\d+(,\d+)*|\d+\/\d+|\d+-\d+|\*)]$/;
+function inflatePropertyIfMultiIndexed(property, object) {
+    if (property.indexOf("[") === -1) {
+        return [property];
+    }
+    let propertyParts = property.split(".");
+    let inflatedProperties = [""];
+    let delimiter = "";
+    for (let propertyPart of propertyParts) {
+        let parts = INDEX_PARTS_REGEX.exec(propertyPart);
+        if (parts !== null) {
+            let propertyPartName = delimiter + parts[1];
+            let indexPart =  parts[2];
+            if (indexPart === "*" || indexPart.indexOf("/") >= 0) {
+                let startStep = indexPart === "*" ? [0, 1] : indexPart.split("/");
+                inflatedProperties = inflatedProperties.map(ip => ip + propertyPartName)
+                    .flatMap(ip => [...startStepIter(ip, object, +startStep[0], startStep[1])]
+                        .map(i => ip + "[" + i + "]"))
+            } else if (indexPart.indexOf("-") >= 0) {
+                let intervall = indexPart.split("-");
+                let indexList = [...intervallIter(+intervall[0], intervall[1])];
+                inflatedProperties = inflatedProperties.map(ip => ip + propertyPartName)
+                    .flatMap(ip => indexList.map(i => ip + "[" + i + "]"))
+            } else {
+                let indexList = indexPart.split(",");
+                inflatedProperties = inflatedProperties.map(ip => ip + propertyPartName)
+                    .flatMap(ip => indexList.map(i => ip + "[" + i + "]"))
+            }
+        } else if (propertyPart.lastIndexOf("[") >= 0) {
+            console.error("Not a valid indexed property: " + propertyPart);
+            return [];
+        } else {
+            inflatedProperties = inflatedProperties.map(p => p + delimiter + propertyPart);
+        }
+        delimiter = ".";
+    }
+    return inflatedProperties;
+}
+
+// ("foo", {foo:["a","b","c","d","e","f",]}, 1, 2) -> [1,3,5])
+function* startStepIter(property, object, startIndex, step) {
+    let propertyValue = getPropertyValue(property, object);
+    if (propertyValue === undefined || !Array.isArray(propertyValue)) {
+        console.error("Should not happen: propertyValue is not an array: " + property);
+    } else {
+        for (let i = startIndex; i < propertyValue.length; i++) {
+            if (i >= startIndex && (i - startIndex) % step == 0) {
+                yield i;
+            }
+        }
+    }
+}
+
+function* intervallIter(start, end) {
+    for (let i = start; i <= end; i++) {
+        yield i;
+    }
+}
+
+// console.log(inflatePropertyIfMultiIndexed("a[*]", {a:[0,0,0,0,0]}));
+// console.log(inflatePropertyIfMultiIndexed("a[2/2]", {a:[0,0,0,0,0]}));
+// console.log(inflatePropertyIfMultiIndexed("a[*].b[0/1]", {a:[{b:[0]},{b:[0,0]}]}));
+

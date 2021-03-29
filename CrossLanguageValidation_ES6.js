@@ -479,7 +479,7 @@ function* intervallIter(start, end) {
     }
 }
 
-// console.log(inflatePropertyIfMultiIndexed("a[*]", {a:[0,0,0,0,0]}));
-// console.log(inflatePropertyIfMultiIndexed("a[2/2]", {a:[0,0,0,0,0]}));
-// console.log(inflatePropertyIfMultiIndexed("a[*].b[0/1]", {a:[{b:[0]},{b:[0,0]}]}));
+console.log(inflatePropertyIfMultiIndexed("a[*]", {a:[0,0,0,0,0]}));
+console.log(inflatePropertyIfMultiIndexed("a[2/2]", {a:[0,0,0,0,0]}));
+console.log(inflatePropertyIfMultiIndexed("a[*].b[0/1]", {a:[{b:[0]},{b:[0,0]}]}));
 

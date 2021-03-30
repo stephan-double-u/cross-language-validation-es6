@@ -37,8 +37,10 @@ export function isPropertyMandatory(typeName, property, object, userPerms) {
     return getMatchingPropertyConstraint(typeRules, property, object, userPerms) !== undefined;
 }
 
+const EQUALS_NOT_NULL_CONSTRAINT = {type: "EQUALS_NOT_NULL"};
 export function validateMandatoryPropertyRules(typeName, property, object, userPerms) {
-    if (object[property] !== null && isPropertyMandatory(typeName, property, object, userPerms)) {
+    if (isPropertyMandatory(typeName, property, object, userPerms)
+        && conditionIsMet({property: property, constraint: EQUALS_NOT_NULL_CONSTRAINT}, object)) {
         return "VALID";
     }
     return defaultMandatoryMessage + "." + typeName + "." + property;
@@ -50,7 +52,7 @@ export function isPropertyImmutable(typeName, property, object, userPerms) {
     if (object === undefined) {
         return false;
     }
-    console.log("Checking immutable rules for:", typeName, property);
+    //console.log("Checking immutable rules for:", typeName, property);
     let typeRules = crossLanguageValidationRules.immutableRules[typeName];
     return getMatchingPropertyConstraint(typeRules, property, object, userPerms) !== undefined;
 }
@@ -89,7 +91,7 @@ function arePermissionsMatching(conditionPerms, userPerms) {
         return false;
     }
     let matchingPerms = userPerms.filter(value => conditionPerms["values"].includes(value));
-    console.log(conditionPerms["values"], "intersect", userPerms, "?", matchingPerms)
+    //console.log(conditionPerms["values"], "intersect", userPerms, "?", matchingPerms)
     return matchingPerms.length > 0;
 }
 
@@ -172,18 +174,22 @@ function groupConditionsAreMet(conditionsSubGroup, object) {
  * Validates the condition against the object.
  */
 function conditionIsMet(condition, object) {
-    let property = condition["property"];
-    let constraint = condition["constraint"];
-    if (property === undefined || constraint === undefined) {
-        console.error("ERROR - condition.property and condition.contraint must not be undefined")
-        return false;
+    let propertiesToCheck = inflatePropertyIfMultiIndexed(condition.property, object);
+    for (let i = 0; i < propertiesToCheck.length; i++) {
+        let propValue = getPropertyValue(propertiesToCheck[i], object)
+        //console.log("propertiesToCheck: ", propertiesToCheck, ", propValue: ", propValue)
+        if (propValue === undefined) {
+            console.warn("WARN - Condition ", condition, "propValue is undefined; return false")
+            return false;
+        }
+        if (!constraintIsValid(condition.constraint, propValue, object)) {
+            return false;
+        }
     }
-    let propValue = getPropertyValue(condition.property, object)
-    if (propValue === undefined) {
-        console.warn("WARN - Condition ", condition, "propValue is undefined; return false")
-        return false;
-    }
-    //console.log("typeof", propValue, typeof propValue)
+    return true;
+}
+
+function constraintIsValid(constraint, propValue, object) {
     let isMet;
     switch (constraint.type) {
         case 'EQUALS_ANY':
@@ -212,7 +218,7 @@ function conditionIsMet(condition, object) {
         default:
             console.error("ERROR - Constraint type not supported (yet): ", constraint.type)
     }
-    console.debug("DEBUG - Condition:", condition, "->", isMet)
+    //console.debug("DEBUG - constraint:", constraint, "->", isMet)
     return isMet;
 }
 
@@ -421,7 +427,7 @@ export function dateConstraintIsMet(constraint, propValue) {
 // "foo.bar[0,1].zoo.baz[2-3]" ->
 // ["foo.bar[0].zoo.baz[2]", "foo.bar[0].zoo.baz[3]", "foo.bar[1].zoo.baz[2]", "foo.bar[1].zoo.baz[3]"]
 let INDEX_PARTS_REGEX = /^(.+)\[(\d+(,\d+)*|\d+\/\d+|\d+-\d+|\*)]$/;
-function inflatePropertyIfMultiIndexed(property, object) {
+export function inflatePropertyIfMultiIndexed(property, object) {
     if (property.indexOf("[") === -1) {
         return [property];
     }
@@ -459,7 +465,7 @@ function inflatePropertyIfMultiIndexed(property, object) {
     return inflatedProperties;
 }
 
-// ("foo", {foo:["a","b","c","d","e","f",]}, 1, 2) -> [1,3,5])
+// ("foo", {foo:["a","b","c","d","e","f",]}, 1, 2) -> 1,3,5)
 function* startStepIter(property, object, startIndex, step) {
     let propertyValue = getPropertyValue(property, object);
     if (propertyValue === undefined || !Array.isArray(propertyValue)) {
@@ -478,8 +484,3 @@ function* intervallIter(start, end) {
         yield i;
     }
 }
-
-console.log(inflatePropertyIfMultiIndexed("a[*]", {a:[0,0,0,0,0]}));
-console.log(inflatePropertyIfMultiIndexed("a[2/2]", {a:[0,0,0,0,0]}));
-console.log(inflatePropertyIfMultiIndexed("a[*].b[0/1]", {a:[{b:[0]},{b:[0,0]}]}));
-

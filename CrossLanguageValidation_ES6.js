@@ -1,8 +1,15 @@
+const emptyValidationRules = {
+    "schema-version": "0.2",
+    "mandatoryRules": {},
+    "immutableRules": {},
+    "contentRules": {},
+    "updateRules": {}
+}
 
-let crossLanguageValidationRules;
+let crossLanguageValidationRules = emptyValidationRules;
 
 let defaultMandatoryMessage = "error.validation.mandatory";
-// let defaultImmutableMessage = "error.validation.immutable";
+let defaultImmutableMessage = "error.validation.immutable";
 // let defaultContentMessage = "error.validation.content";
 // let defaultUpdateMessage = "error.validation.update";
 
@@ -14,13 +21,7 @@ export function setValidationRules(rules) {
         || rules.contentRules === undefined
         || rules.updateRules === undefined) {
         console.error("Rules are not valid");
-        crossLanguageValidationRules = {
-            "schema-version": "0.2",
-            "mandatoryRules": {},
-            "immutableRules": {},
-            "contentRules": {},
-            "updteRules": {}
-        }
+        crossLanguageValidationRules = emptyValidationRules;
     } else {
         crossLanguageValidationRules = rules;
     }
@@ -55,6 +56,31 @@ export function isPropertyImmutable(typeName, property, object, userPerms) {
     //console.log("Checking immutable rules for:", typeName, property);
     let typeRules = crossLanguageValidationRules.immutableRules[typeName];
     return getMatchingPropertyConstraint(typeRules, property, object, userPerms) !== undefined;
+}
+
+export function validateImmutablePropertyRules(typeName, property, originalObject, modifiedObject, userPerms) {
+    if (isPropertyImmutable(typeName, property, originalObject, userPerms)
+        && propertyValuesEquals(property, originalObject, modifiedObject)) {
+        return "VALID";
+    }
+    return defaultImmutableMessage + "." + typeName + "." + property;
+}
+
+function propertyValuesEquals(property, originalObject, modifiedObject) {
+    let propertiesToCheck = inflatePropertyIfMultiIndexed(property, originalObject);
+    if (propertiesToCheck.length !== inflatePropertyIfMultiIndexed(property, modifiedObject).length) {
+        return false;
+    }
+    for (let propertyToCheck of propertiesToCheck) {
+        let originalValue = getPropertyValue(propertyToCheck, originalObject);
+        let modifiedValue = getPropertyValue(propertyToCheck, modifiedObject);
+        console.debug("Property '{}': original value is '{}', modified value is '{}'", propertyToCheck, originalValue,
+            modifiedValue);
+        if (originalValue !== modifiedValue) {
+            return false;
+        }
+    }
+    return true;
 }
 
 function getMatchingPropertyConstraint(typeRules, property, object, userPerms) {
@@ -234,7 +260,6 @@ function getPropertyValue(propertyName, object) {
         let propertyPart = propertyParts[i];
         // split up propertyPart into name and optional index, e.g. 'article[0]' into 'article and 0
         let propertyPartName = propertyPart.split("[")[0];
-        //console.log("propertyPartName:", propertyPartName)
         propertyValue = propertyValue[propertyPartName];
         //console.log("propertyValue:", propertyValue)
         if (propertyPart.endsWith("]")) {
@@ -297,8 +322,9 @@ export function equalsRefConstraintIsMet(constraint, propValue, object) {
     switch (constraint.type) {
         case 'EQUALS_ANY_REF':
         case 'EQUALS_NONE_REF':
-            //console.log(constraint.values.map(v => findPropertyValue(v, object)));
-            let refValues = constraint.values.map(v => getPropertyValue(v, object));
+            let refValues = constraint.values
+                .flatMap(refProp => inflatePropertyIfMultiIndexed(refProp, object))
+                .map(prop => getPropertyValue(prop, object));
             let propAsDate = new Date(propValue);
             if (propAsDate instanceof Date && !isNaN(propAsDate)) {
                 let matchLength =  refValues.map(v => new Date(v)).filter(valueAsDate => +valueAsDate === +propAsDate).length;

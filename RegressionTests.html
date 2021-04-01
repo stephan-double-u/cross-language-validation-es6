@@ -12,9 +12,16 @@
 <body>
 <div id="console"></div>
 <script type="module">
-import {setValidationRules, isPropertyMandatory, validateMandatoryPropertyRules, isPropertyImmutable} from './CrossLanguageValidation_ES6.js';
-import {sizeConstraintIsMet, rangeConstraintIsMet, dateConstraintIsMet,
-    equalsConstraintIsMet, equalsRefConstraintIsMet, regexConstraintIsMet} from './CrossLanguageValidation_ES6.js';
+    import {
+        setValidationRules,
+        isPropertyMandatory,
+        validateMandatoryPropertyRules,
+        isPropertyImmutable,
+        validateImmutablePropertyRules
+    } from
+            './CrossLanguageValidation_ES6.js';
+import {sizeConstraintIsMet, rangeConstraintIsMet, dateConstraintIsMet, equalsConstraintIsMet, equalsRefConstraintIsMet,
+    regexConstraintIsMet, inflatePropertyIfMultiIndexed} from './CrossLanguageValidation_ES6.js';
 import {testValidationRules, reservation} from './RegressionTestsData_ES6.js';
 
 var console = document.getElementById("console");
@@ -25,6 +32,10 @@ function log(text, asError) {
     console.appendChild(para);
 }
 function assert(msg, expected, compare) {
+    if (Array.isArray(expected) && Array.isArray(compare)) {
+        expected = expected.toString();
+        compare = compare.toString();
+    }
     if (expected !== compare) {
         log("Assertion failure: " +  msg + ". Expected " + expected + ", but got " + compare, true);
     } else {
@@ -46,7 +57,8 @@ assert('id is mandatory for permission "ccc"',
     true, isPropertyMandatory("reservation", "id", reservation, ["ccc"]));
 assert('id is mandatory for no (matching) permission',
     true, isPropertyMandatory("reservation", "id", reservation, ["xxx"]));
-
+assert('array with *-index is mandatory',
+    true, isPropertyMandatory("reservation", "stringArray[*]", reservation));
 
 log(">>> Testing isPropertyImmutable")
 assert('id is immutable for no (matching) permission',
@@ -54,10 +66,32 @@ assert('id is immutable for no (matching) permission',
 
 log(">>> Testing validateMandatoryPropertyRules")
 assert('id is mandatory and not null',
-    true, validateMandatoryPropertyRules("reservation", "id", {"id": 1}) === "VALID");
+    "VALID", validateMandatoryPropertyRules("reservation", "id", {"id": 1}));
 assert('id is mandatory but null',
-    true, validateMandatoryPropertyRules("reservation", "id", {"id": null}) === "error.validation.mandatory.reservation.id");
+    "error.validation.mandatory.reservation.id", validateMandatoryPropertyRules("reservation", "id", {"id": null}));
+assert('stringArray[*] elements are not null',
+    "VALID", validateMandatoryPropertyRules("reservation", "stringArray[*]", reservation));
 
+log(">>> Testing validateImmutablePropertyRules")
+assert('id is immutable and unchanged',
+    "VALID", validateImmutablePropertyRules("reservation", "id", {"id": 1}, {"id": 1}));
+assert('id is immutable but changed',
+    "error.validation.immutable.reservation.id",
+    validateImmutablePropertyRules("reservation", "id", {"id": 1}, {"id": 2}));
+
+log(">>> Testing equalsRefConstraintIsMet")
+assert('Value EQUALS_ANY_REF value',
+    true, equalsRefConstraintIsMet({"type": "EQUALS_ANY_REF" , "values": ["prop1", "prop2[*]"]}, "zoo",
+        {"prop1": "val", "prop2": ["foo", "bar", "zoo"]}));
+assert('Value do not EQUALS_ANY_REF valued',
+    false, equalsRefConstraintIsMet({"type": "EQUALS_ANY_REF" , "values": ["prop1", "prop2[*]"]}, "xyz",
+        {"prop1": "val", "prop2": ["foo", "bar", "zoo"]}));
+assert('Value EQUALS_NONE_REF value',
+    true, equalsRefConstraintIsMet({"type": "EQUALS_NONE_REF" , "values": ["prop1", "prop2[*]"]}, "xyz",
+        {"prop1": "val", "prop2": ["foo", "bar", "zoo"]}));
+assert('Value do notEQUALS_NONE_REF value',
+    false, equalsRefConstraintIsMet({"type": "EQUALS_NONE_REF" , "values": ["prop1", "prop2[*]"]}, "zoo",
+        {"prop1": "val", "prop2": ["foo", "bar", "zoo"]}));
 
 log(">>> Testing sizeConstraintIsMet")
 assert('Type property invalid',
@@ -127,7 +161,6 @@ assert('Number is < min',
 assert('Number is > max',
     false, rangeConstraintIsMet({"type": "RANGE", "max": 1}, 2));
 
-// dateConstraintIsMet tests
 log(">>> Testing dateConstraintIsMet")
 assert('Property "days" is missing',
     false, dateConstraintIsMet({"type": "DATE_FUTURE"}, new Date()));
@@ -145,6 +178,19 @@ assert('PAST 1 against year 2020',
     true, dateConstraintIsMet({"type": "DATE_PAST", "days": 1}, new Date("2020-01-01")));
 assert('PAST 10000 against year 2020',
     false, dateConstraintIsMet({"type": "DATE_PAST", "days": 1000}, new Date("2020-01-01")));
+
+log(">>> Testing inflatePropertyIfMultiIndexed")
+assert('*.index is inflated correct',
+    ["a[0]","a[1]","a[2]","a[3]","a[4]"], inflatePropertyIfMultiIndexed("a[*]", {a:[0,0,0,0,0]}));
+assert('start/step-index is inflated correct',
+    ["a[1]","a[3]"], inflatePropertyIfMultiIndexed("a[1/2]", {a:[0,0,0,0,0]}));
+assert('range-index is inflated correct',
+    ["a[1]","a[2]","a[3]"], inflatePropertyIfMultiIndexed("a[1-3]", {a:[0,0,0,0,0]}));
+assert('list-index is inflated correct',
+    ["a[1]","a[4]"], inflatePropertyIfMultiIndexed("a[1,4]", {a:[0,0,0,0,0]}));
+assert('combined-index is inflated correct',
+    ["a[0].b[0].c[2].d","a[1].b[0].c[2].d","a[1].b[1].c[2].d"],
+    inflatePropertyIfMultiIndexed("a[*].b[0/1].c[2].d", {a:[{b:[0]},{b:[0,0]}]}));
 
 </script>
 </body>

@@ -3,6 +3,21 @@ export const testValidationRules =
         "schema-version": "0.2",
         "mandatoryRules": {
             "reservation": {
+                "stringArray[*]": [
+                    {
+                        "condition": {
+                            "property": "stringArray[*]",
+                            "constraint": {
+                                "type": "EQUALS_ANY",
+                                "values": [
+                                    "one",
+                                    "two",
+                                    "three"
+                                ]
+                            }
+                        }
+                    }
+                ],
                 "customer": [
                     {}
                 ],
@@ -125,7 +140,7 @@ export let reservation = {
     "someString": "foobar",
     "someBool": true,
     "nullValue": null,
-    "stringArray": ["one", 'two'],
+    "stringArray": ["one", "two"],
     "someMap": {"one": 1, "two": 2},
     "someDate": "2020-02-12T08:15:59.338+0000",
     "otherDate": "2020-02-12T08:15:59.338Z"

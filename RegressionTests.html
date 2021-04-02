@@ -7,6 +7,7 @@
         p {font-family: sans-serif;}
         .ok {color: green;}
         .err {color: tomato;}
+        .info {color: darkblue;}
     </style>
 </head>
 <body>
@@ -25,9 +26,9 @@ import {sizeConstraintIsMet, rangeConstraintIsMet, dateConstraintIsMet, equalsCo
 import {testValidationRules, reservation} from './RegressionTestsData_ES6.js';
 
 var console = document.getElementById("console");
-function log(text, asError) {
+function log(text, cssClass = "info") {
     var para = document.createElement("P");
-    para.setAttribute("class", asError === true ? "err" : "ok")
+    para.setAttribute("class", cssClass)
     para.appendChild(document.createTextNode(text));
     console.appendChild(para);
 }
@@ -37,9 +38,9 @@ function assert(msg, expected, compare) {
         compare = compare.toString();
     }
     if (expected !== compare) {
-        log("Assertion failure: " +  msg + ". Expected " + expected + ", but got " + compare, true);
+        log("Assertion failure: " +  msg + ". Expected " + expected + ", but got " + compare, "err");
     } else {
-        log("Test o.k.: " +  msg);
+        log("Test o.k.: " +  msg, "ok");
     }
 }
 setValidationRules(testValidationRules);
@@ -78,6 +79,29 @@ assert('id is immutable and unchanged',
 assert('id is immutable but changed',
     "error.validation.immutable.reservation.id",
     validateImmutablePropertyRules("reservation", "id", {"id": 1}, {"id": 2}));
+
+log(">>> Testing equalsConstraintIsMet")
+assert('String EQUALS_ANY value',
+    true, equalsConstraintIsMet({"type": "EQUALS_ANY" , "values": ["foo", "bar", "zoo"]}, "zoo"));
+assert('String not EQUALS_ANY value',
+    false, equalsConstraintIsMet({"type": "EQUALS_ANY" , "values": ["foo", "bar", "zoo"]}, "baz"));
+assert('String EQUALS_NONE value',
+    true, equalsConstraintIsMet({"type": "EQUALS_NONE" , "values": ["foo", "bar", "zoo"]}, "baz"));
+assert('String not EQUALS_NONE value',
+    false, equalsConstraintIsMet({"type": "EQUALS_NONE" , "values": ["foo", "bar", "zoo"]}, "zoo"));
+assert('Date EQUALS_ANY value',
+    true, equalsConstraintIsMet({"type": "EQUALS_ANY" , "values": ["1999-01-01T00:00:00Z", "2021-01-01T00:00:00Z"]},
+        "2021-01-01T00:00:00Z"));
+assert('Date not EQUALS_ANY value',
+    false, equalsConstraintIsMet({"type": "EQUALS_ANY" , "values": ["1999-01-01T00:00:00Z", "2021-01-01T00:00:00Z"]},
+        "3000-01-01T00:00:00Z"));
+assert('Date EQUALS_NONE value',
+    true, equalsConstraintIsMet({"type": "EQUALS_NONE" , "values": ["1999-01-01T00:00:00Z", "2021-01-01T00:00:00Z"]},
+        "3000-01-01T00:00:00Z"));
+assert('Date not EQUALS_NONE value',
+    false, equalsConstraintIsMet({"type": "EQUALS_NONE" , "values": ["1999-01-01T00:00:00Z", "2021-01-01T00:00:00Z"]},
+        "2021-01-01T00:00:00Z"));
+log("... many more")
 
 log(">>> Testing equalsRefConstraintIsMet")
 assert('Value EQUALS_ANY_REF value',

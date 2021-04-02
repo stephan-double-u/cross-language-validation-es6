@@ -291,7 +291,7 @@ export function equalsConstraintIsMet(constraint, propValue) {
         case 'EQUALS_ANY':
         case 'EQUALS_NONE': //TODO: new Date(1) ist instanceOfDate :-(
             let propAsDate = new Date(propValue);
-            if (typeof propValue != 'number' && propValue instanceof Date && !isNaN(propAsDate)) {
+            if (typeof propValue != 'number' && propAsDate instanceof Date && !isNaN(propAsDate)) {
                 let matchLength =  constraint.values.map(v => new Date(v)).filter(valueAsDate => +valueAsDate === +propAsDate).length;
                 if (constraint.type === 'EQUALS_ANY') {
                     return matchLength > 0;

@@ -355,7 +355,7 @@ export function regexConstraintIsMet(constraint, propValue) {
         return true;
     }
     for (let regex of constraint.values) {
-        if (propValue.match(regex)) {
+        if (("" + propValue).match(regex)) {
             //console.log(propValue, "match", regex);
             return true;
         }

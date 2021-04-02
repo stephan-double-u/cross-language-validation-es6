@@ -101,7 +101,6 @@ assert('Date EQUALS_NONE value',
 assert('Date not EQUALS_NONE value',
     false, equalsConstraintIsMet({"type": "EQUALS_NONE" , "values": ["1999-01-01T00:00:00Z", "2021-01-01T00:00:00Z"]},
         "2021-01-01T00:00:00Z"));
-log("... many more")
 
 log(">>> Testing equalsRefConstraintIsMet")
 assert('Value EQUALS_ANY_REF value',
@@ -116,6 +115,12 @@ assert('Value EQUALS_NONE_REF value',
 assert('Value do notEQUALS_NONE_REF value',
     false, equalsRefConstraintIsMet({"type": "EQUALS_NONE_REF" , "values": ["prop1", "prop2[*]"]}, "zoo",
         {"prop1": "val", "prop2": ["foo", "bar", "zoo"]}));
+
+log(">>> Testing regexConstraintIsMet")
+assert('String REGEX_ANY match',
+    true, regexConstraintIsMet({"type": "REGEX_ANY", "values": ["nomatch", "^[fz]o{2}$"]}, "zoo"));
+assert('Number REGEX_ANY match',
+    true, regexConstraintIsMet({"type": "REGEX_ANY", "values": ["nomatch", "^[0-7]+$"]}, 1234567));
 
 log(">>> Testing sizeConstraintIsMet")
 assert('Type property invalid',

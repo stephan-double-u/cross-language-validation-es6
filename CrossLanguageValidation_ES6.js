@@ -10,7 +10,7 @@ let crossLanguageValidationRules = emptyValidationRules;
 
 let defaultMandatoryMessage = "error.validation.mandatory";
 let defaultImmutableMessage = "error.validation.immutable";
-// let defaultContentMessage = "error.validation.content";
+let defaultContentMessage = "error.validation.content";
 // let defaultUpdateMessage = "error.validation.update";
 
 export function setValidationRules(rules) {
@@ -31,7 +31,7 @@ export function isPropertyMandatory(typeName, property, object, userPerms) {
     // console.log("userPerms:", userPerms, "instanceof Array?", userPerms instanceof Array);
     // TODO more param checks
     if (object === undefined) {
-        return false;
+        return undefined;
     }
     console.info("INFO - Checking mandatory rules for:", typeName, property);
     let typeRules = crossLanguageValidationRules.mandatoryRules[typeName];
@@ -41,29 +41,29 @@ export function isPropertyMandatory(typeName, property, object, userPerms) {
 const EQUALS_NOT_NULL_CONSTRAINT = {type: "EQUALS_NOT_NULL"};
 export function validateMandatoryPropertyRules(typeName, property, object, userPerms) {
     if (isPropertyMandatory(typeName, property, object, userPerms)
-        && conditionIsMet({property: property, constraint: EQUALS_NOT_NULL_CONSTRAINT}, object)) {
-        return "VALID";
+        && !conditionIsMet({property: property, constraint: EQUALS_NOT_NULL_CONSTRAINT}, object)) {
+        return defaultMandatoryMessage + "." + typeName + "." + property;
     }
-    return defaultMandatoryMessage + "." + typeName + "." + property;
+    return "VALID";
 }
 
 export function isPropertyImmutable(typeName, property, object, userPerms) {
     //console.log("userPerms:", userPerms, "instanceof Array?", userPerms instanceof Array);
     // TODO more param checks
     if (object === undefined) {
-        return false;
+        return undefined;
     }
-    //console.log("Checking immutable rules for:", typeName, property);
+    console.info("INFO - Checking immutable rules for:", typeName, property);
     let typeRules = crossLanguageValidationRules.immutableRules[typeName];
     return getMatchingPropertyConstraint(typeRules, property, object, userPerms) !== undefined;
 }
 
 export function validateImmutablePropertyRules(typeName, property, originalObject, modifiedObject, userPerms) {
     if (isPropertyImmutable(typeName, property, originalObject, userPerms)
-        && propertyValuesEquals(property, originalObject, modifiedObject)) {
-        return "VALID";
+        && !propertyValuesEquals(property, originalObject, modifiedObject)) {
+        return defaultImmutableMessage + "." + typeName + "." + property;
     }
-    return defaultImmutableMessage + "." + typeName + "." + property;
+    return "VALID";
 }
 
 function propertyValuesEquals(property, originalObject, modifiedObject) {
@@ -74,13 +74,32 @@ function propertyValuesEquals(property, originalObject, modifiedObject) {
     for (let propertyToCheck of propertiesToCheck) {
         let originalValue = getPropertyValue(propertyToCheck, originalObject);
         let modifiedValue = getPropertyValue(propertyToCheck, modifiedObject);
-        console.debug("Property '{}': original value is '{}', modified value is '{}'", propertyToCheck, originalValue,
-            modifiedValue);
+        //console.debug("Property '{}': original value is '{}', modified value is '{}'", propertyToCheck, originalValue, modifiedValue);
         if (originalValue !== modifiedValue) {
             return false;
         }
     }
     return true;
+}
+
+function getPropertyContentConstraint(typeName, property, object, userPerms) {
+    //console.log("userPerms:", userPerms, "instanceof Array?", userPerms instanceof Array);
+    // TODO more param checks
+    if (object === undefined) {
+        return undefined;
+    }
+    console.info("INFO - Checking content rules for:", typeName, property);
+    let typeRules = crossLanguageValidationRules.contentRules[typeName];
+    return getMatchingPropertyConstraint(typeRules, property, object, userPerms);
+}
+
+export function validateContentPropertyRules(typeName, property, object, userPerms) {
+    let constraint = getPropertyContentConstraint(typeName, property, object, userPerms);
+    if (constraint !== undefined && constraint.type !== undefined
+        && !conditionIsMet({property: property, constraint: constraint}, object)) {
+        return defaultContentMessage + "." + typeName + "." + property;
+    }
+    return "VALID";
 }
 
 function getMatchingPropertyConstraint(typeRules, property, object, userPerms) {

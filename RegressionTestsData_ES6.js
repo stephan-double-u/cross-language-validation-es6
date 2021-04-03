@@ -123,6 +123,24 @@ export const testValidationRules =
         },
         "contentRules": {
             "reservation": {
+                "number1": [
+                    {
+                        "constraint": {
+                            "type": "RANGE",
+                            "min": 1,
+                            "max": 10
+                        }
+                    }
+                ],
+                "someString": [
+                    {
+                        "constraint": {
+                            "type": "SIZE",
+                            "min": 1,
+                            "max": 10
+                        }
+                    }
+                ]
             }
         },
         "updateRules": {

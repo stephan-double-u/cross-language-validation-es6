@@ -13,14 +13,8 @@
 <body>
 <div id="console"></div>
 <script type="module">
-    import {
-        setValidationRules,
-        isPropertyMandatory,
-        validateMandatoryPropertyRules,
-        isPropertyImmutable,
-        validateImmutablePropertyRules
-    } from
-            './CrossLanguageValidation_ES6.js';
+import {setValidationRules, isPropertyMandatory, validateMandatoryPropertyRules, isPropertyImmutable,
+    validateImmutablePropertyRules, validateContentPropertyRules} from './CrossLanguageValidation_ES6.js';
 import {sizeConstraintIsMet, rangeConstraintIsMet, dateConstraintIsMet, equalsConstraintIsMet, equalsRefConstraintIsMet,
     regexConstraintIsMet, inflatePropertyIfMultiIndexed} from './CrossLanguageValidation_ES6.js';
 import {testValidationRules, reservation} from './RegressionTestsData_ES6.js';
@@ -44,6 +38,24 @@ function assert(msg, expected, compare) {
     }
 }
 setValidationRules(testValidationRules);
+
+log(">>> Testing validateContentPropertyRules")
+assert('Number RANGE fits',
+    "VALID", validateContentPropertyRules("reservation", "number1", {"number1": 3}));
+assert('Number RANGE min fails',
+    "error.validation.content.reservation.number1",
+    validateContentPropertyRules("reservation", "number1", {"number1": 0}));
+assert('Number RANGE max fails',
+    "error.validation.content.reservation.number1",
+    validateContentPropertyRules("reservation", "number1", {"number1": 11}));
+assert('String SIZE fits',
+    "VALID", validateContentPropertyRules("reservation", "someString", {"someString": "right size"}));
+assert('String SIZE min fails',
+    "error.validation.content.reservation.someString",
+    validateContentPropertyRules("reservation", "someString", {"someString": ""}));
+assert('String SIZE max fails',
+    "error.validation.content.reservation.someString",
+    validateContentPropertyRules("reservation", "someString", {"someString": "just to long"}));
 
 log(">>> Testing isPropertyMandatory")
 assert('non-existing property is not mandatory',

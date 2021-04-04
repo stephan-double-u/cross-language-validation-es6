@@ -14,10 +14,11 @@
 <div id="console"></div>
 <script type="module">
 import {setValidationRules, isPropertyMandatory, validateMandatoryPropertyRules, isPropertyImmutable,
-    validateImmutablePropertyRules, validateContentPropertyRules} from './CrossLanguageValidation_ES6.js';
+    validateImmutablePropertyRules, validateContentPropertyRules, validateUpdatePropertyRules}
+    from './CrossLanguageValidation_ES6.js';
 import {sizeConstraintIsMet, rangeConstraintIsMet, dateConstraintIsMet, equalsConstraintIsMet, equalsRefConstraintIsMet,
     regexConstraintIsMet, inflatePropertyIfMultiIndexed} from './CrossLanguageValidation_ES6.js';
-import {testValidationRules, reservation} from './RegressionTestsData_ES6.js';
+import {testValidationRules, sometype} from './RegressionTestsData_ES6.js';
 
 var console = document.getElementById("console");
 function log(text, cssClass = "info") {
@@ -39,58 +40,67 @@ function assert(msg, expected, compare) {
 }
 setValidationRules(testValidationRules);
 
+log(">>> Testing validateUpdatePropertyRules")
+assert('Update someString from "foo" to "bar" is allowed',
+    "VALID", validateUpdatePropertyRules("sometype", "someString", {"someString": "foo"}, {"someString": "bar"}));
+assert('Update someString from "foo" to "zoo" is allowed for permission "aaa"',
+    "VALID", validateUpdatePropertyRules("sometype", "someString", {"someString": "foo"}, {"someString": "zoo"}, ["aaa"]));
+assert('Update someString from "foo" to "zoo" is not allowed w/o permission "aaa"',
+    "error.validation.content.sometype.someString",
+    validateUpdatePropertyRules("sometype", "someString", {"someString": "foo"}, {"someString": "zoo"}));
+
 log(">>> Testing validateContentPropertyRules")
 assert('Number RANGE fits',
-    "VALID", validateContentPropertyRules("reservation", "number1", {"number1": 3}));
+    "VALID", validateContentPropertyRules("sometype", "number1", {"number1": 3}));
 assert('Number RANGE min fails',
-    "error.validation.content.reservation.number1",
-    validateContentPropertyRules("reservation", "number1", {"number1": 0}));
+    "error.validation.content.sometype.number1",
+    validateContentPropertyRules("sometype", "number1", {"number1": 0}));
 assert('Number RANGE max fails',
-    "error.validation.content.reservation.number1",
-    validateContentPropertyRules("reservation", "number1", {"number1": 11}));
+    "error.validation.content.sometype.number1",
+    validateContentPropertyRules("sometype", "number1", {"number1": 11}));
 assert('String SIZE fits',
-    "VALID", validateContentPropertyRules("reservation", "someString", {"someString": "right size"}));
+    "VALID", validateContentPropertyRules("sometype", "someString", {"someString": "right size"}));
 assert('String SIZE min fails',
-    "error.validation.content.reservation.someString",
-    validateContentPropertyRules("reservation", "someString", {"someString": ""}));
+    "error.validation.content.sometype.someString",
+    validateContentPropertyRules("sometype", "someString", {"someString": ""}));
 assert('String SIZE max fails',
-    "error.validation.content.reservation.someString",
-    validateContentPropertyRules("reservation", "someString", {"someString": "just to long"}));
+    "error.validation.content.sometype.someString",
+    validateContentPropertyRules("sometype", "someString", {"someString": "just to long"}));
 
 log(">>> Testing isPropertyMandatory")
 assert('non-existing property is not mandatory',
-    false, isPropertyMandatory("reservation", "non-existing", reservation));
+    false, isPropertyMandatory("sometype", "non-existing", sometype));
 assert('customer (with no conditions) is mandatory ',
-    true, isPropertyMandatory("reservation", "customer", reservation));
+    true, isPropertyMandatory("sometype", "customer", sometype));
 assert('id is mandatory for permission "aaa"',
-    true, isPropertyMandatory("reservation", "id", reservation, ["aaa", "xxx"]));
+    true, isPropertyMandatory("sometype", "id", sometype, ["aaa", "xxx"]));
 assert('id is mandatory for permission "bbb"',
-    true, isPropertyMandatory("reservation", "id", reservation, ["xxx", "bbb"]));
+    true, isPropertyMandatory("sometype", "id", sometype, ["xxx", "bbb"]));
 assert('id is mandatory for permission "ccc"',
-    true, isPropertyMandatory("reservation", "id", reservation, ["ccc"]));
+    true, isPropertyMandatory("sometype", "id", sometype, ["ccc"]));
 assert('id is mandatory for no (matching) permission',
-    true, isPropertyMandatory("reservation", "id", reservation, ["xxx"]));
+    true, isPropertyMandatory("sometype", "id", sometype, ["xxx"]));
 assert('array with *-index is mandatory',
-    true, isPropertyMandatory("reservation", "stringArray[*]", reservation));
+    true, isPropertyMandatory("sometype", "stringArray[*]", sometype));
 
 log(">>> Testing isPropertyImmutable")
 assert('id is immutable for no (matching) permission',
-    true, isPropertyImmutable("reservation", "id", reservation));
+    true, isPropertyImmutable("sometype", "id", sometype));
 
 log(">>> Testing validateMandatoryPropertyRules")
 assert('id is mandatory and not null',
-    "VALID", validateMandatoryPropertyRules("reservation", "id", {"id": 1}));
+    "VALID", validateMandatoryPropertyRules("sometype", "id", {"id": 1}));
 assert('id is mandatory but null',
-    "error.validation.mandatory.reservation.id", validateMandatoryPropertyRules("reservation", "id", {"id": null}));
+    "error.validation.mandatory.sometype.id", validateMandatoryPropertyRules("sometype", "id", {"id": null}));
 assert('stringArray[*] elements are not null',
-    "VALID", validateMandatoryPropertyRules("reservation", "stringArray[*]", reservation));
+    "VALID", validateMandatoryPropertyRules("sometype", "stringArray[*]", sometype));
 
 log(">>> Testing validateImmutablePropertyRules")
 assert('id is immutable and unchanged',
-    "VALID", validateImmutablePropertyRules("reservation", "id", {"id": 1}, {"id": 1}));
+    "VALID", validateImmutablePropertyRules("sometype", "id", {"id": 1}, {"id": 1}));
 assert('id is immutable but changed',
-    "error.validation.immutable.reservation.id",
-    validateImmutablePropertyRules("reservation", "id", {"id": 1}, {"id": 2}));
+    "error.validation.immutable.sometype.id",
+    validateImmutablePropertyRules("sometype", "id", {"id": 1}, {"id": 2}));
 
 log(">>> Testing equalsConstraintIsMet")
 assert('String EQUALS_ANY value',

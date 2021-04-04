@@ -2,7 +2,7 @@ export const testValidationRules =
     {
         "schema-version": "0.2",
         "mandatoryRules": {
-            "reservation": {
+            "sometype": {
                 "stringArray[*]": [
                     {
                         "condition": {
@@ -117,12 +117,12 @@ export const testValidationRules =
             }
         },
         "immutableRules": {
-            "reservation": {
+            "sometype": {
                 "id": []
             }
         },
         "contentRules": {
-            "reservation": {
+            "sometype": {
                 "number1": [
                     {
                         "constraint": {
@@ -144,18 +144,60 @@ export const testValidationRules =
             }
         },
         "updateRules": {
-            "reservation": {
+            "sometype": {
+                "someString": [
+                    {
+                        "constraint": {
+                            "type": "EQUALS_ANY",
+                            "values": [
+                                "bar"
+                            ]
+                        },
+                        "condition": {
+                            "property": "someString",
+                            "constraint": {
+                                "type": "EQUALS_ANY",
+                                "values": [
+                                    "foo"
+                                ]
+                            }
+                        }
+                    },
+                    {
+                        "constraint": {
+                            "type": "EQUALS_ANY",
+                            "values": [
+                                "zoo"
+                            ]
+                        },
+                        "permissions": {
+                            "type": "ANY",
+                            "values": [
+                                "aaa"
+                            ]
+                        },
+                        "condition": {
+                            "property": "someString",
+                            "constraint": {
+                                "type": "EQUALS_ANY",
+                                "values": [
+                                    "foo"
+                                ]
+                            }
+                        }
+                    }
+                ]
             }
         }
     }
 ;
 
-// Test reservation
-export let reservation = {
+// Test entity
+export let sometype = {
     "id": 1,
     "number1": 1,
     "number2": 2.3,
-    "someString": "foobar",
+    "someString": "foo",
     "someBool": true,
     "nullValue": null,
     "stringArray": ["one", "two"],

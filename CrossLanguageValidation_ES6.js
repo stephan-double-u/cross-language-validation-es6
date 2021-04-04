@@ -102,9 +102,29 @@ export function validateContentPropertyRules(typeName, property, object, userPer
     return "VALID";
 }
 
+function getPropertyUpdateConstraint(typeName, property, object, userPerms) {
+    //console.log("userPerms:", userPerms, "instanceof Array?", userPerms instanceof Array);
+    // TODO more param checks
+    if (object === undefined) {
+        return undefined;
+    }
+    console.info("INFO - Checking update rules for:", typeName, property);
+    let typeRules = crossLanguageValidationRules.updateRules[typeName];
+    return getMatchingPropertyConstraint(typeRules, property, object, userPerms);
+}
+
+export function validateUpdatePropertyRules(typeName, property, originalObject, modifiedObject, userPerms) {
+    let constraint = getPropertyUpdateConstraint(typeName, property, originalObject, userPerms);
+    if (constraint !== undefined && constraint.type !== undefined
+        && !conditionIsMet({property: property, constraint: constraint}, modifiedObject)) {
+        return defaultContentMessage + "." + typeName + "." + property;
+    }
+    return "VALID";
+}
+
 function getMatchingPropertyConstraint(typeRules, property, object, userPerms) {
-    let propertyRules = typeRules[property];
-    if (typeRules === undefined || propertyRules === undefined) {
+    let propertyRules = typeRules !== undefined ? typeRules[property] : undefined;
+    if (propertyRules === undefined) {
         return undefined;
     }
     if (propertyRules.length === 0) {

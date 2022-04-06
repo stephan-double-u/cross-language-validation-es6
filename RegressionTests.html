@@ -21,6 +21,7 @@ import {sizeConstraintIsMet, rangeConstraintIsMet, dateConstraintIsMet, equalsCo
 import {testValidationRules, sometype} from './RegressionTestsData_ES6.js';
 
 var console = document.getElementById("console");
+
 function log(text, cssClass = "info") {
     var para = document.createElement("P");
     para.setAttribute("class", cssClass)
@@ -38,16 +39,49 @@ function assert(msg, expected, compare) {
         log("Test o.k.: " +  msg, "ok");
     }
 }
+
 setValidationRules(testValidationRules);
 
-log(">>> Testing validateUpdatePropertyRules")
-assert('Update someString from "foo" to "bar" is allowed',
-    "VALID", validateUpdatePropertyRules("sometype", "someString", {"someString": "foo"}, {"someString": "bar"}));
-assert('Update someString from "foo" to "zoo" is allowed for permission "aaa"',
-    "VALID", validateUpdatePropertyRules("sometype", "someString", {"someString": "foo"}, {"someString": "zoo"}, ["aaa"]));
-assert('Update someString from "foo" to "zoo" is not allowed w/o permission "aaa"',
-    "error.validation.content.sometype.someString",
-    validateUpdatePropertyRules("sometype", "someString", {"someString": "foo"}, {"someString": "zoo"}));
+
+log(">>> Testing isPropertyMandatory")
+assert('non-existing property is not mandatory',
+    false, isPropertyMandatory("sometype", "non-existing", sometype));
+assert('customer (with no conditions) is mandatory ',
+    true, isPropertyMandatory("sometype", "customer", sometype));
+assert('number1 is mandatory for permission "aaa"',
+    true, isPropertyMandatory("sometype", "number1", sometype, ["aaa", "xxx"]));
+assert('number1 is mandatory for permission "bbb"',
+    true, isPropertyMandatory("sometype", "number1", sometype, ["xxx", "bbb"]));
+assert('number1 is mandatory for permission "ccc"',
+    true, isPropertyMandatory("sometype", "number1", sometype, ["ccc"]));
+assert('number1 is mandatory for no (matching) permission',
+    true, isPropertyMandatory("sometype", "number1", sometype, ["xxx"]));
+assert('array with *-index is mandatory',
+    true, isPropertyMandatory("sometype", "stringArray[*]", sometype));
+
+
+log(">>> Testing validateMandatoryPropertyRules")
+assert('number1 is mandatory and not null',
+    "VALID", validateMandatoryPropertyRules("sometype", "number1", {"number1": 1}));
+assert('number1 is mandatory but null',
+    "error.validation.mandatory.sometype.number1",
+    validateMandatoryPropertyRules("sometype", "number1", {"number1": null}));
+assert('stringArray[*] elements are not null',
+    "VALID", validateMandatoryPropertyRules("sometype", "stringArray[*]", sometype));
+
+
+log(">>> Testing isPropertyImmutable")
+assert('number1 is immutable for no (matching) permission',
+    true, isPropertyImmutable("sometype", "number1", sometype));
+
+
+log(">>> Testing validateImmutablePropertyRules")
+assert('number1 is immutable and unchanged',
+    "VALID", validateImmutablePropertyRules("sometype", "number1", {"number1": 1}, {"number1": 1}));
+assert('number1 is immutable but changed',
+    "error.validation.immutable.sometype.number1",
+    validateImmutablePropertyRules("sometype", "number1", {"number1": 1}, {"number1": 2}));
+
 
 log(">>> Testing validateContentPropertyRules")
 assert('Number RANGE fits',
@@ -66,41 +100,19 @@ assert('String SIZE min fails',
 assert('String SIZE max fails',
     "error.validation.content.sometype.someString",
     validateContentPropertyRules("sometype", "someString", {"someString": "just to long"}));
+assert('nullValue EQUALS_NULL',
+    "VALID", validateContentPropertyRules("sometype", "nullValue", {"nullValue": null}));
 
-log(">>> Testing isPropertyMandatory")
-assert('non-existing property is not mandatory',
-    false, isPropertyMandatory("sometype", "non-existing", sometype));
-assert('customer (with no conditions) is mandatory ',
-    true, isPropertyMandatory("sometype", "customer", sometype));
-assert('id is mandatory for permission "aaa"',
-    true, isPropertyMandatory("sometype", "id", sometype, ["aaa", "xxx"]));
-assert('id is mandatory for permission "bbb"',
-    true, isPropertyMandatory("sometype", "id", sometype, ["xxx", "bbb"]));
-assert('id is mandatory for permission "ccc"',
-    true, isPropertyMandatory("sometype", "id", sometype, ["ccc"]));
-assert('id is mandatory for no (matching) permission',
-    true, isPropertyMandatory("sometype", "id", sometype, ["xxx"]));
-assert('array with *-index is mandatory',
-    true, isPropertyMandatory("sometype", "stringArray[*]", sometype));
 
-log(">>> Testing isPropertyImmutable")
-assert('id is immutable for no (matching) permission',
-    true, isPropertyImmutable("sometype", "id", sometype));
+log(">>> Testing validateUpdatePropertyRules")
+assert('Update someString from "foo" to "bar" is allowed',
+    "VALID", validateUpdatePropertyRules("sometype", "someString", {"someString": "foo"}, {"someString": "bar"}));
+assert('Update someString from "foo" to "zoo" is allowed for permission "aaa"',
+    "VALID", validateUpdatePropertyRules("sometype", "someString", {"someString": "foo"}, {"someString": "zoo"}, ["aaa"]));
+assert('Update someString from "foo" to "zoo" is not allowed w/o permission "aaa"',
+    "error.validation.update.sometype.someString",
+    validateUpdatePropertyRules("sometype", "someString", {"someString": "foo"}, {"someString": "zoo"}));
 
-log(">>> Testing validateMandatoryPropertyRules")
-assert('id is mandatory and not null',
-    "VALID", validateMandatoryPropertyRules("sometype", "id", {"id": 1}));
-assert('id is mandatory but null',
-    "error.validation.mandatory.sometype.id", validateMandatoryPropertyRules("sometype", "id", {"id": null}));
-assert('stringArray[*] elements are not null',
-    "VALID", validateMandatoryPropertyRules("sometype", "stringArray[*]", sometype));
-
-log(">>> Testing validateImmutablePropertyRules")
-assert('id is immutable and unchanged',
-    "VALID", validateImmutablePropertyRules("sometype", "id", {"id": 1}, {"id": 1}));
-assert('id is immutable but changed',
-    "error.validation.immutable.sometype.id",
-    validateImmutablePropertyRules("sometype", "id", {"id": 1}, {"id": 2}));
 
 log(">>> Testing equalsConstraintIsMet")
 assert('String EQUALS_ANY value',
@@ -124,27 +136,36 @@ assert('Date not EQUALS_NONE value',
     false, equalsConstraintIsMet({"type": "EQUALS_NONE" , "values": ["1999-01-01T00:00:00Z", "2021-01-01T00:00:00Z"]},
         "2021-01-01T00:00:00Z"));
 
+
 log(">>> Testing equalsRefConstraintIsMet")
 assert('Value EQUALS_ANY_REF value',
     true, equalsRefConstraintIsMet({"type": "EQUALS_ANY_REF" , "values": ["prop1", "prop2[*]"]}, "zoo",
         {"prop1": "val", "prop2": ["foo", "bar", "zoo"]}));
-assert('Value do not EQUALS_ANY_REF valued',
+assert('Value not EQUALS_ANY_REF value',
     false, equalsRefConstraintIsMet({"type": "EQUALS_ANY_REF" , "values": ["prop1", "prop2[*]"]}, "xyz",
         {"prop1": "val", "prop2": ["foo", "bar", "zoo"]}));
 assert('Value EQUALS_NONE_REF value',
     true, equalsRefConstraintIsMet({"type": "EQUALS_NONE_REF" , "values": ["prop1", "prop2[*]"]}, "xyz",
         {"prop1": "val", "prop2": ["foo", "bar", "zoo"]}));
-assert('Value do notEQUALS_NONE_REF value',
+assert('Value not EQUALS_NONE_REF value',
     false, equalsRefConstraintIsMet({"type": "EQUALS_NONE_REF" , "values": ["prop1", "prop2[*]"]}, "zoo",
         {"prop1": "val", "prop2": ["foo", "bar", "zoo"]}));
+
 
 log(">>> Testing regexConstraintIsMet")
 assert('String REGEX_ANY match',
     true, regexConstraintIsMet({"type": "REGEX_ANY", "values": ["nomatch", "^[fz]o{2}$"]}, "zoo"));
+assert('String not REGEX_ANY match',
+    false, regexConstraintIsMet({"type": "REGEX_ANY", "values": ["nomatch"]}, "zoo"));
 assert('Number REGEX_ANY match',
     true, regexConstraintIsMet({"type": "REGEX_ANY", "values": ["nomatch", "^[0-7]+$"]}, 1234567));
+assert('Number not REGEX_ANY match',
+    false, regexConstraintIsMet({"type": "REGEX_ANY", "values": ["nomatch"]}, 1234567));
+
 
 log(">>> Testing sizeConstraintIsMet")
+assert('Property is null',
+    false, sizeConstraintIsMet({"type": "SIZE", "min": 1}, null));
 assert('Type property invalid',
     false, sizeConstraintIsMet({"typ_": "SIZE"}, "Test"));
 assert('Type value is invalid',
@@ -181,10 +202,13 @@ assert('Object should have max size',
     true, sizeConstraintIsMet({"type": "SIZE", "max": 2}, {"one": 1, "two": 2}));
 assert('Object is to short',
     false, sizeConstraintIsMet({"type": "SIZE", "min": 3}, {"one": 1, "two": 2}));
-assert('Object is to long',
-    false, sizeConstraintIsMet({"type": "SIZE", "max": 1}, {"one": 1, "two": 2}));
+
 
 log(">>> Testing rangeConstraintIsMet")
+assert('False if property is null',
+    false, rangeConstraintIsMet({"type": "RANGE", "min": 1}, null));
+assert('False if property is undefined',
+    false, rangeConstraintIsMet({"type": "RANGE", "min": 1}, undefined));
 assert('Type property invalid',
     false, rangeConstraintIsMet({"typ_": "RANGE"}, 1));
 assert('Type value is invalid',
@@ -212,23 +236,29 @@ assert('Number is < min',
 assert('Number is > max',
     false, rangeConstraintIsMet({"type": "RANGE", "max": 1}, 2));
 
+
 log(">>> Testing dateConstraintIsMet")
+assert('False if property is null',
+    false, dateConstraintIsMet({"type": "DATE_FUTURE", "days": 0}, null));
+assert('False if property is undefined',
+    false, dateConstraintIsMet({"type": "DATE_FUTURE", "days": 0}, undefined));
 assert('Property "days" is missing',
-    false, dateConstraintIsMet({"type": "DATE_FUTURE"}, new Date()));
-assert('FUTURE 0 against now',
-    false, dateConstraintIsMet({"type": "DATE_FUTURE", "days": 0}, new Date()));
+    false, dateConstraintIsMet({"type": "DATE_FUTURE"}, "3000-01-31"));
+assert('FUTURE 0 against today',
+    true, dateConstraintIsMet({"type": "DATE_FUTURE", "days": 0}, new Date().toISOString()));
 assert('PAST 0 against now',
-    false, dateConstraintIsMet({"type": "DATE_PAST", "days": 0}, new Date()));
-assert('FUTURE 1 against now',
-    false, dateConstraintIsMet({"type": "DATE_FUTURE", "days": 1}, new Date()));
-assert('PAST 1 against now',
-    false, dateConstraintIsMet({"type": "DATE_PAST", "days": 1}, new Date()));
+    true, dateConstraintIsMet({"type": "DATE_PAST", "days": 0}, new Date().toISOString()));
+assert('FUTURE 1 against today',
+    false, dateConstraintIsMet({"type": "DATE_FUTURE", "days": 1}, new Date().toISOString()));
+assert('PAST 1 against today',
+    false, dateConstraintIsMet({"type": "DATE_PAST", "days": 1}, new Date().toISOString()));
 assert('FUTURE 1 against year 3000',
-    true, dateConstraintIsMet({"type": "DATE_FUTURE", "days": 1}, new Date("3000-01-31")));
-assert('PAST 1 against year 2020',
-    true, dateConstraintIsMet({"type": "DATE_PAST", "days": 1}, new Date("2020-01-01")));
+    true, dateConstraintIsMet({"type": "DATE_FUTURE", "days": 1}, "3000-01-31"));
+assert('PAST 1 against year 2000',
+    true, dateConstraintIsMet({"type": "DATE_PAST", "days": 1}, "2020-01-01"));
 assert('PAST 10000 against year 2020',
-    false, dateConstraintIsMet({"type": "DATE_PAST", "days": 1000}, new Date("2020-01-01")));
+    false, dateConstraintIsMet({"type": "DATE_PAST", "days": 10000}, "2020-01-01"));
+
 
 log(">>> Testing inflatePropertyIfMultiIndexed")
 assert('*.index is inflated correct',
@@ -243,6 +273,7 @@ assert('combined-index is inflated correct',
     ["a[0].b[0].c[2].d","a[1].b[0].c[2].d","a[1].b[1].c[2].d"],
     inflatePropertyIfMultiIndexed("a[*].b[0/1].c[2].d", {a:[{b:[0]},{b:[0,0]}]}));
 
+log("END OF TESTS")
 </script>
 </body>
 </html>

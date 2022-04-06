@@ -11,7 +11,7 @@ let crossLanguageValidationRules = emptyValidationRules;
 let defaultMandatoryMessage = "error.validation.mandatory";
 let defaultImmutableMessage = "error.validation.immutable";
 let defaultContentMessage = "error.validation.content";
-// let defaultUpdateMessage = "error.validation.update";
+let defaultUpdateMessage = "error.validation.update";
 
 export function setValidationRules(rules) {
     if (rules === undefined || rules === null
@@ -28,8 +28,6 @@ export function setValidationRules(rules) {
 }
 
 export function isPropertyMandatory(typeName, property, object, userPerms) {
-    // console.log("userPerms:", userPerms, "instanceof Array?", userPerms instanceof Array);
-    // TODO more param checks
     if (object === undefined) {
         return undefined;
     }
@@ -48,8 +46,6 @@ export function validateMandatoryPropertyRules(typeName, property, object, userP
 }
 
 export function isPropertyImmutable(typeName, property, object, userPerms) {
-    //console.log("userPerms:", userPerms, "instanceof Array?", userPerms instanceof Array);
-    // TODO more param checks
     if (object === undefined) {
         return undefined;
     }
@@ -83,8 +79,6 @@ function propertyValuesEquals(property, originalObject, modifiedObject) {
 }
 
 function getPropertyContentConstraint(typeName, property, object, userPerms) {
-    //console.log("userPerms:", userPerms, "instanceof Array?", userPerms instanceof Array);
-    // TODO more param checks
     if (object === undefined) {
         return undefined;
     }
@@ -103,8 +97,6 @@ export function validateContentPropertyRules(typeName, property, object, userPer
 }
 
 function getPropertyUpdateConstraint(typeName, property, object, userPerms) {
-    //console.log("userPerms:", userPerms, "instanceof Array?", userPerms instanceof Array);
-    // TODO more param checks
     if (object === undefined) {
         return undefined;
     }
@@ -117,7 +109,7 @@ export function validateUpdatePropertyRules(typeName, property, originalObject, 
     let constraint = getPropertyUpdateConstraint(typeName, property, originalObject, userPerms);
     if (constraint !== undefined && constraint.type !== undefined
         && !conditionIsMet({property: property, constraint: constraint}, modifiedObject)) {
-        return defaultContentMessage + "." + typeName + "." + property;
+        return defaultUpdateMessage + "." + typeName + "." + property;
     }
     return "VALID";
 }
@@ -131,20 +123,21 @@ function getMatchingPropertyConstraint(typeRules, property, object, userPerms) {
         return {};
     }
     // find first constraint with matching permission and valid conditions
-    for (let i = 0; i < propertyRules.length; i++ ) {
-        let permissions = propertyRules[i]["permissions"];
-        if (arePermissionsMatching(permissions, userPerms)
-            && allConditionsAreMet(getConditionsTopGroup(propertyRules[i]), object)) {
-            let constraint = propertyRules[i]["constraint"];
+    for (const item of propertyRules) {
+        let permissions = item["permissions"];
+        if (permissions!== undefined
+            && arePermissionsMatching(permissions, userPerms)
+            && allConditionsAreMet(getConditionsTopGroup(item), object)) {
+            let constraint = item["constraint"];
             return constraint !== undefined ? constraint : {};
         }
     }
     // find first default constraint (w/o any permission) and valid conditions
-    for (let i = 0; i < propertyRules.length; i++ ) {
-        let permissions = propertyRules[i]["permissions"];
+    for (const item of propertyRules) {
+        let permissions = item["permissions"];
         if (permissions === undefined
-            && allConditionsAreMet(getConditionsTopGroup(propertyRules[i]), object)) {
-            let constraint = propertyRules[i]["constraint"];
+            && allConditionsAreMet(getConditionsTopGroup(item), object)) {
+            let constraint = item["constraint"];
             return constraint !== undefined ? constraint : {};
         }
     }
@@ -163,20 +156,20 @@ function arePermissionsMatching(conditionPerms, userPerms) {
 function getConditionsTopGroup(propertyRule) {
     // Default is a 'top group' w/o any 'conditions' which is evaluated to true! (see: groupConditionsAreMet)
     let topGroupToReturn = {"operator":"AND","conditionsGroups":[{"operator":"AND","conditions":[]}]};
-    let condition = propertyRule["condition"];
-    let conditionsGroup = propertyRule["conditionsGroup"];
-    let conditionsTopGroup = propertyRule["conditionsTopGroup"];
+    let condition = propertyRule.condition;
+    let conditionsGroup = propertyRule.conditionsGroup;
+    let conditionsTopGroup = propertyRule.conditionsTopGroup;
     if (condition !== undefined) {
         topGroupToReturn.conditionsGroups[0].conditions[0] = condition;
         if (conditionsGroup !== undefined || conditionsTopGroup !== undefined) {
-            console.warn("Property rule should contain either 'condition' or 'conditionsGroup' or " +
+            console.warn("Property rule should contain 'condition' xor 'conditionsGroup' xor " +
                 "'conditionsTopGroup'. Property 'condition' takes precedence", propertyRule)
         }
     } else if (conditionsGroup !== undefined) {
         topGroupToReturn.conditionsGroups[0] = conditionsGroup;
         if (conditionsTopGroup !== undefined) {
-            console.warn("Property rule should contain either 'conditionsGroup' or " +
-                "'conditionsTopGroup'. Property 'conditionsGroup' takes precedence", constraint.type)
+            console.warn("Property rule should contain 'conditionsGroup' xor " +
+                "'conditionsTopGroup'. Property 'conditionsGroup' takes precedence", propertyRule)
         }
     } else if (conditionsTopGroup !== undefined) {
         topGroupToReturn = conditionsTopGroup;
@@ -194,10 +187,9 @@ function allConditionsAreMet(conditionsTopGroup, object) {
         return false;
     }
     let operator = conditionsTopGroup["operator"];
-    for (let i = 0; i < conditionsTopGroup["conditionsGroups"].length; i++) {
-        let curSubGroup = conditionsTopGroup["conditionsGroups"][i];
-        let conditionsAreMet = groupConditionsAreMet(curSubGroup, object);
-        console.debug("DEBUG -", curSubGroup.operator, "groupConditionsAreMet:", conditionsAreMet)
+    for (const subGroup of conditionsTopGroup["conditionsGroups"]) {
+        let conditionsAreMet = groupConditionsAreMet(subGroup, object);
+        console.debug("DEBUG -", subGroup.operator, "groupConditionsAreMet:", conditionsAreMet)
         if (conditionsAreMet) {
             if (operator === "OR") {
                 return true;
@@ -217,8 +209,7 @@ function allConditionsAreMet(conditionsTopGroup, object) {
 function groupConditionsAreMet(conditionsSubGroup, object) {
     let operator = conditionsSubGroup["operator"];
     let conditions = conditionsSubGroup["conditions"];
-    for (let i = 0; i < conditions.length; i++) {
-        let curCondition = conditions[i];
+    for (let curCondition of conditions) {
         let isMet = conditionIsMet(curCondition, object);
         if (operator === "OR") {
             if (isMet) {
@@ -240,8 +231,8 @@ function groupConditionsAreMet(conditionsSubGroup, object) {
  */
 function conditionIsMet(condition, object) {
     let propertiesToCheck = inflatePropertyIfMultiIndexed(condition.property, object);
-    for (let i = 0; i < propertiesToCheck.length; i++) {
-        let propValue = getPropertyValue(propertiesToCheck[i], object)
+    for (const property of propertiesToCheck) {
+        let propValue = getPropertyValue(property, object)
         //console.log("propertiesToCheck: ", propertiesToCheck, ", propValue: ", propValue)
         if (propValue === undefined) {
             console.warn("WARN - Condition ", condition, "propValue is undefined; return false")
@@ -295,8 +286,7 @@ function constraintIsValid(constraint, propValue, object) {
 function getPropertyValue(propertyName, object) {
     let propertyParts = propertyName.split(".");
     let propertyValue = object;
-    for (let i = 0; i < propertyParts.length; i++) {
-        let propertyPart = propertyParts[i];
+    for (let propertyPart of propertyParts) {
         // split up propertyPart into name and optional index, e.g. 'article[0]' into 'article and 0
         let propertyPartName = propertyPart.split("[")[0];
         propertyValue = propertyValue[propertyPartName];
@@ -323,15 +313,19 @@ function getPropertyValue(propertyName, object) {
 }
 
 /**
- * Validates equals constraint.
+ * Validates EQUALS_ANY, EQUALS_NONE, EQUALS_NULL and EQUALS_NOT_NULL constraint.
  */
 export function equalsConstraintIsMet(constraint, propValue) {
     switch (constraint.type) {
         case 'EQUALS_ANY':
-        case 'EQUALS_NONE': //TODO: new Date(1) ist instanceOfDate :-(
+        case 'EQUALS_NONE':
+            if (propValueIsNullOrUndefined(propValue)) {
+                return (constraint.type === 'EQUALS_NONE');
+            }
             let propAsDate = new Date(propValue);
-            if (typeof propValue != 'number' && propAsDate instanceof Date && !isNaN(propAsDate)) {
-                let matchLength =  constraint.values.map(v => new Date(v)).filter(valueAsDate => +valueAsDate === +propAsDate).length;
+            if (typeof propValue === 'string' && propAsDate instanceof Date && !isNaN(propAsDate)) {
+                let matchLength =  constraint.values.map(v => new Date(v))
+                    .filter(valueAsDate => +valueAsDate === +propAsDate).length;
                 if (constraint.type === 'EQUALS_ANY') {
                     return matchLength > 0;
                 } else {
@@ -355,18 +349,22 @@ export function equalsConstraintIsMet(constraint, propValue) {
 }
 
 /**
- * Validates equals ref constraint.
+ * Validates EQUALS_ANY_REF-REF and EQUALS_NONE_REF constraint.
  */
 export function equalsRefConstraintIsMet(constraint, propValue, object) {
     switch (constraint.type) {
         case 'EQUALS_ANY_REF':
         case 'EQUALS_NONE_REF':
+            if (propValueIsNullOrUndefined(propValue)) {
+                return (constraint.type === 'EQUALS_NONE_REF');
+            }
             let refValues = constraint.values
                 .flatMap(refProp => inflatePropertyIfMultiIndexed(refProp, object))
                 .map(prop => getPropertyValue(prop, object));
             let propAsDate = new Date(propValue);
-            if (propAsDate instanceof Date && !isNaN(propAsDate)) {
-                let matchLength =  refValues.map(v => new Date(v)).filter(valueAsDate => +valueAsDate === +propAsDate).length;
+            if (typeof propValue === 'string' && propAsDate instanceof Date && !isNaN(propAsDate)) {
+                let matchLength =  refValues.map(v => new Date(v))
+                    .filter(valueAsDate => +valueAsDate === +propAsDate).length;
                 if (constraint.type === 'EQUALS_ANY_REF') {
                     return matchLength > 0;
                 } else {
@@ -386,12 +384,15 @@ export function equalsRefConstraintIsMet(constraint, propValue, object) {
 }
 
 /**
- * Validates regex constraint.
+ * Validates REGEX_ANY constraint.
  */
 export function regexConstraintIsMet(constraint, propValue) {
     if (constraint.type !== 'REGEX_ANY') {
         console.error("ERROR - Unknown regex constraint type: ", constraint.type)
-        return true;
+        return false;
+    }
+    if (propValueIsNullOrUndefined(propValue)) {
+        return false;
     }
     for (let regex of constraint.values) {
         if (("" + propValue).match(regex)) {
@@ -404,7 +405,7 @@ export function regexConstraintIsMet(constraint, propValue) {
 }
 
 /**
- * Validates size constraint.
+ * Validates SIZE constraint.
  */
 export function sizeConstraintIsMet(constraint, propValue) {
     if (constraint.type !== 'SIZE') {
@@ -420,22 +421,26 @@ export function sizeConstraintIsMet(constraint, propValue) {
         console.error("ERROR - Size constraint 'min' and 'max' values must have type 'number': ", constraint)
         return false;
     }
+    if (propValueIsNullOrUndefined(propValue)) {
+        return false;
+    }
+
     // Check min <= length <= max
     if (typeof propValue == "string") {
         return (constraint.min === undefined || propValue.length >= constraint.min)
             && (constraint.max === undefined || propValue.length <= constraint.max)
-    } else if (typeof propValue == "object") {  // e.g. {"one":1, "two":2} resp. [1,2]
+    }
+    if (typeof propValue == "object") {  // e.g. {"one":1, "two":2} resp. [1,2]
         let size = Object.keys(propValue).length;
         return (constraint.min === undefined || size >= constraint.min)
             && (constraint.max === undefined || size <= constraint.max)
-    } else {
-        console.error("ERROR - Unsupported type of size constraint value:", typeof propValue)
     }
+    console.error("ERROR - Unsupported type of size constraint value:", typeof propValue)
     return false;
 }
 
 /**
- * Validates range constraint.
+ * Validates RANGE constraint.
  */
 export function rangeConstraintIsMet(constraint, propValue) {
     if (constraint.type !== 'RANGE') {
@@ -451,6 +456,10 @@ export function rangeConstraintIsMet(constraint, propValue) {
         console.error("ERROR - Range constraint 'min' and 'max' values must have type 'number': ", constraint)
         return false;
     }
+    if (propValueIsNullOrUndefined(propValue)) {
+        return false;
+    }
+
     // Check min <= length <= max
     if (typeof propValue == "number") {
         return (constraint.min === undefined || propValue >= constraint.min)
@@ -462,35 +471,62 @@ export function rangeConstraintIsMet(constraint, propValue) {
 }
 
 /**
- * Validates date constraint.
+ * Validates DATE_FUTURE and DATE_PAST constraint.
  */
 export function dateConstraintIsMet(constraint, propValue) {
     if (constraint.days === undefined) {
         console.error("ERROR - Date constraint must have 'days' property: ", constraint)
         return false;
     }
-    let propAsDate = new Date(propValue);
-    if (!(propAsDate instanceof Date) || isNaN(propAsDate)) {
-        console.error("ERROR - The property value is not a valid date: ", propValue)
+    if (propValueIsNullOrUndefined(propValue)) {
         return false;
     }
+
+    let propAsDate = new Date(propValue);
+    if (typeof propValue !== 'string' || !(propAsDate instanceof Date) || isNaN(propAsDate)) {
+        console.error("ERROR - The property value is not a valid ISO date string: ", propValue)
+        return false;
+    }
+    propAsDate = stripOffTime(propAsDate);
     switch (constraint.type) {
         case 'DATE_FUTURE':
             propAsDate.setDate(propAsDate.getDate() - constraint.days);
-            return propAsDate > new Date();
+            return propAsDate >= getToday();
         case 'DATE_PAST':
             propAsDate.setDate(propAsDate.getDate() + constraint.days);
-            return propAsDate < new Date();
+            return propAsDate <= getToday();
         default:
-            console.error("ERROR - Date constraint must have 'type' property ['DATE_FUTURE', 'DATE_PAST']: ", constraint.type)
+            console.error("ERROR - Date constraint must have 'type' property ['DATE_FUTURE', 'DATE_PAST']: ",
+                constraint.type)
     }
     return false;
 }
 
+function propValueIsNullOrUndefined(propValue) {
+    if (propValue === undefined) {
+        console.error("ERROR - The property value should not be undefined.")
+        return true;
+    }
+    if (propValue === null) {
+        return true;
+    }
+    return false;
+}
+
+function getToday() {
+    return stripOffTime(new Date());
+}
+
+function stripOffTime(date) {
+    date.setHours(0);
+    date.setMinutes(0);
+    date.setSeconds(0);
+    date.setMilliseconds(0);
+    return date;
+}
 
 // Inflate property with multi-index definitions to properties with single-index definitions, e.g.
-// "foo.bar[0,1].zoo.baz[2-3]" ->
-// ["foo.bar[0].zoo.baz[2]", "foo.bar[0].zoo.baz[3]", "foo.bar[1].zoo.baz[2]", "foo.bar[1].zoo.baz[3]"]
+// "a.b[0,1].c.d[2-3]" -> ["a.b[0].c.d[2]", "a.b[0].c.d[3]", "a.b[1].c.d[2]", "a.b[1].c.d[3]"]
 let INDEX_PARTS_REGEX = /^(.+)\[(\d+(,\d+)*|\d+\/\d+|\d+-\d+|\*)]$/;
 export function inflatePropertyIfMultiIndexed(property, object) {
     if (property.indexOf("[") === -1) {
@@ -510,8 +546,9 @@ export function inflatePropertyIfMultiIndexed(property, object) {
                     .flatMap(ip => [...startStepIter(ip, object, +startStep[0], startStep[1])]
                         .map(i => ip + "[" + i + "]"))
             } else if (indexPart.indexOf("-") >= 0) {
-                let intervall = indexPart.split("-");
-                let indexList = [...intervallIter(+intervall[0], intervall[1])];
+                let interval = indexPart.split("-");
+                let arrayLength = +interval[1] - +interval[0] + 1;
+                let indexList = Array(arrayLength).fill().map((_, i) => i + +interval[0]);
                 inflatedProperties = inflatedProperties.map(ip => ip + propertyPartName)
                     .flatMap(ip => indexList.map(i => ip + "[" + i + "]"))
             } else {
@@ -530,22 +567,16 @@ export function inflatePropertyIfMultiIndexed(property, object) {
     return inflatedProperties;
 }
 
-// ("foo", {foo:["a","b","c","d","e","f",]}, 1, 2) -> 1,3,5)
+// startStepIter("foo", {foo:["a","b","c","d","e","f"]}, 1, 2) yields 1,3,5
 function* startStepIter(property, object, startIndex, step) {
     let propertyValue = getPropertyValue(property, object);
-    if (propertyValue === undefined || !Array.isArray(propertyValue)) {
-        console.error("Should not happen: propertyValue is not an array: " + property);
-    } else {
+    if (propertyValue !== undefined && Array.isArray(propertyValue)) {
         for (let i = startIndex; i < propertyValue.length; i++) {
-            if (i >= startIndex && (i - startIndex) % step == 0) {
+            if (i >= startIndex && (i - startIndex) % step === 0) {
                 yield i;
             }
         }
-    }
-}
-
-function* intervallIter(start, end) {
-    for (let i = start; i <= end; i++) {
-        yield i;
+    } else {
+        console.error("Should not happen: propertyValue is not an array: " + property);
     }
 }

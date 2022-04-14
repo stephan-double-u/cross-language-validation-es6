@@ -87,21 +87,29 @@ log(">>> Testing validateContentPropertyRules")
 assert('Number RANGE fits',
     "VALID", validateContentPropertyRules("sometype", "number1", {"number1": 3}));
 assert('Number RANGE min fails',
-    "error.validation.content.sometype.number1",
+    "error.validation.content.range.sometype.number1",
     validateContentPropertyRules("sometype", "number1", {"number1": 0}));
 assert('Number RANGE max fails',
-    "error.validation.content.sometype.number1",
+    "error.validation.content.range.sometype.number1",
     validateContentPropertyRules("sometype", "number1", {"number1": 11}));
 assert('String SIZE fits',
     "VALID", validateContentPropertyRules("sometype", "someString", {"someString": "right size"}));
 assert('String SIZE min fails',
-    "error.validation.content.sometype.someString",
+    "error.validation.content.size.sometype.someString",
     validateContentPropertyRules("sometype", "someString", {"someString": ""}));
 assert('String SIZE max fails',
-    "error.validation.content.sometype.someString",
+    "error.validation.content.size.sometype.someString",
     validateContentPropertyRules("sometype", "someString", {"someString": "just to long"}));
 assert('nullValue EQUALS_NULL',
     "VALID", validateContentPropertyRules("sometype", "nullValue", {"nullValue": null}));
+assert('stringArray SIZE o.k.',
+    "VALID", validateContentPropertyRules("sometype", "stringArray", {"stringArray": [1, 2]}));
+assert('stringArray SIZE to small',
+    "error.validation.content.size.sometype.stringArray",
+    validateContentPropertyRules("sometype", "stringArray", {"stringArray": [1]}));
+assert('stringArray SIZE to big',
+    "error.validation.content.size.sometype.stringArray",
+    validateContentPropertyRules("sometype", "stringArray", {"stringArray": [1, 2, 3, 4]}));
 
 
 log(">>> Testing validateUpdatePropertyRules")
@@ -110,7 +118,7 @@ assert('Update someString from "foo" to "bar" is allowed',
 assert('Update someString from "foo" to "zoo" is allowed for permission "aaa"',
     "VALID", validateUpdatePropertyRules("sometype", "someString", {"someString": "foo"}, {"someString": "zoo"}, ["aaa"]));
 assert('Update someString from "foo" to "zoo" is not allowed w/o permission "aaa"',
-    "error.validation.update.sometype.someString",
+    "error.validation.update.equals_any.sometype.someString",
     validateUpdatePropertyRules("sometype", "someString", {"someString": "foo"}, {"someString": "zoo"}));
 
 

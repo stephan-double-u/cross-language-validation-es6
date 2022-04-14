@@ -1,5 +1,5 @@
 export const testValidationRules = {
-    "schema-version": "0.2",
+    "schema-version": "0.3",
     "mandatoryRules": {
         "sometype": {
             "stringArray[*]": [
@@ -144,6 +144,15 @@ export const testValidationRules = {
                 {
                     "constraint": {
                         "type": "EQUALS_NULL"
+                    }
+                }
+            ],
+            "stringArray": [
+                {
+                    "constraint": {
+                        "type": "SIZE",
+                        "min": 2,
+                        "max": 3
                     }
                 }
             ]

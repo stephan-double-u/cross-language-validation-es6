@@ -1,5 +1,5 @@
 const emptyValidationRules = {
-    "schema-version": "0.2",
+    "schema-version": "0.3",
     "mandatoryRules": {},
     "immutableRules": {},
     "contentRules": {},
@@ -15,12 +15,12 @@ let defaultUpdateMessage = "error.validation.update";
 
 export function setValidationRules(rules) {
     if (rules === undefined || rules === null
-        || rules["schema-version"] !== "0.2"
+        || rules["schema-version"] !== "0.3"
         || rules.mandatoryRules === undefined
         || rules.immutableRules === undefined
         || rules.contentRules === undefined
         || rules.updateRules === undefined) {
-        console.error("Rules are not valid");
+        console.error("Rules are not valid. Top level content does not match the scheme 0.3");
         crossLanguageValidationRules = emptyValidationRules;
     } else {
         crossLanguageValidationRules = rules;
@@ -31,7 +31,7 @@ export function isPropertyMandatory(typeName, property, object, userPerms) {
     if (object === undefined) {
         return undefined;
     }
-    console.info("INFO - Checking mandatory rules for:", typeName, property);
+    console.debug("DEBUG - Checking mandatory rules for:", typeName, property);
     let typeRules = crossLanguageValidationRules.mandatoryRules[typeName];
     return getMatchingPropertyConstraint(typeRules, property, object, userPerms) !== undefined;
 }
@@ -49,7 +49,7 @@ export function isPropertyImmutable(typeName, property, object, userPerms) {
     if (object === undefined) {
         return undefined;
     }
-    console.info("INFO - Checking immutable rules for:", typeName, property);
+    console.debug("DEBUG - Checking immutable rules for:", typeName, property);
     let typeRules = crossLanguageValidationRules.immutableRules[typeName];
     return getMatchingPropertyConstraint(typeRules, property, object, userPerms) !== undefined;
 }
@@ -70,7 +70,7 @@ function propertyValuesEquals(property, originalObject, modifiedObject) {
     for (let propertyToCheck of propertiesToCheck) {
         let originalValue = getPropertyValue(propertyToCheck, originalObject);
         let modifiedValue = getPropertyValue(propertyToCheck, modifiedObject);
-        //console.debug("Property '{}': original value is '{}', modified value is '{}'", propertyToCheck, originalValue, modifiedValue);
+        console.debug("Property '{}': original value is '{}', modified value is '{}'", propertyToCheck, originalValue, modifiedValue);
         if (originalValue !== modifiedValue) {
             return false;
         }
@@ -91,7 +91,7 @@ export function validateContentPropertyRules(typeName, property, object, userPer
     let constraint = getPropertyContentConstraint(typeName, property, object, userPerms);
     if (constraint !== undefined && constraint.type !== undefined
         && !conditionIsMet({property: property, constraint: constraint}, object)) {
-        return defaultContentMessage + "." + typeName + "." + property;
+        return defaultContentMessage + "." + constraint.type.toLowerCase() + "." + typeName + "." + property;
     }
     return "VALID";
 }
@@ -100,7 +100,7 @@ function getPropertyUpdateConstraint(typeName, property, object, userPerms) {
     if (object === undefined) {
         return undefined;
     }
-    console.info("INFO - Checking update rules for:", typeName, property);
+    console.debug("DEBUG - Checking update rules for:", typeName, property);
     let typeRules = crossLanguageValidationRules.updateRules[typeName];
     return getMatchingPropertyConstraint(typeRules, property, object, userPerms);
 }
@@ -109,7 +109,7 @@ export function validateUpdatePropertyRules(typeName, property, originalObject, 
     let constraint = getPropertyUpdateConstraint(typeName, property, originalObject, userPerms);
     if (constraint !== undefined && constraint.type !== undefined
         && !conditionIsMet({property: property, constraint: constraint}, modifiedObject)) {
-        return defaultUpdateMessage + "." + typeName + "." + property;
+        return defaultUpdateMessage + "." + constraint.type.toLowerCase() + "." + typeName + "." + property;
     }
     return "VALID";
 }
@@ -149,8 +149,18 @@ function arePermissionsMatching(conditionPerms, userPerms) {
         return false;
     }
     let matchingPerms = userPerms.filter(value => conditionPerms["values"].includes(value));
-    //console.log(conditionPerms["values"], "intersect", userPerms, "?", matchingPerms)
-    return matchingPerms.length > 0;
+    console.debug(conditionPerms["values"], "intersect", userPerms, "?", matchingPerms)
+    switch (conditionPerms.type) {
+        case 'ALL':
+            return matchingPerms.length == userPerms.length;
+        case 'ANY':
+            return matchingPerms.length > 0;
+        case 'NONE':
+            return matchingPerms.length == 0;
+        default:
+            console.error("ERROR - Permissions type not supported: ", conditionPerms.type)
+        return false;
+    }
 }
 
 function getConditionsTopGroup(propertyRule) {
@@ -233,7 +243,7 @@ function conditionIsMet(condition, object) {
     let propertiesToCheck = inflatePropertyIfMultiIndexed(condition.property, object);
     for (const property of propertiesToCheck) {
         let propValue = getPropertyValue(property, object)
-        //console.log("propertiesToCheck: ", propertiesToCheck, ", propValue: ", propValue)
+        console.debug("DEBUG - propertiesToCheck: ", propertiesToCheck, ", propValue: ", propValue)
         if (propValue === undefined) {
             console.warn("WARN - Condition ", condition, "propValue is undefined; return false")
             return false;
@@ -246,7 +256,7 @@ function conditionIsMet(condition, object) {
 }
 
 function constraintIsValid(constraint, propValue, object) {
-    let isMet;
+    let isMet = false;
     switch (constraint.type) {
         case 'EQUALS_ANY':
         case 'EQUALS_NONE':
@@ -290,13 +300,12 @@ function getPropertyValue(propertyName, object) {
         // split up propertyPart into name and optional index, e.g. 'article[0]' into 'article and 0
         let propertyPartName = propertyPart.split("[")[0];
         propertyValue = propertyValue[propertyPartName];
-        //console.log("propertyValue:", propertyValue)
+        console.debug("DEBUG - propertyPartName: %s, propertyValue: %s", propertyPartName, propertyValue)
         if (propertyPart.endsWith("]")) {
             let index = /\[(\d+)]/.exec(propertyPart)[1];
-            //console.log("index:", index);
             if (Array.isArray(propertyValue)) {
                 if (propertyValue.length > index) {
-                    console.debug("DEBUG - propertyValue[index]", propertyValue[index]);
+                    console.debug("DEBUG - propertyValue[%d]: %s", index, propertyValue[index]);
                     propertyValue = propertyValue[index];
                 } else {
                     console.error("ERROR - Indexed property is not an array:", propertyValue);
@@ -430,7 +439,7 @@ export function sizeConstraintIsMet(constraint, propValue) {
         return (constraint.min === undefined || propValue.length >= constraint.min)
             && (constraint.max === undefined || propValue.length <= constraint.max)
     }
-    if (typeof propValue == "object") {  // e.g. {"one":1, "two":2} resp. [1,2]
+    if (typeof propValue == "object") {  // e.g. {"one":1, "two":2} or [1,2]
         let size = Object.keys(propValue).length;
         return (constraint.min === undefined || size >= constraint.min)
             && (constraint.max === undefined || size <= constraint.max)
@@ -539,7 +548,7 @@ export function inflatePropertyIfMultiIndexed(property, object) {
         let parts = INDEX_PARTS_REGEX.exec(propertyPart);
         if (parts !== null) {
             let propertyPartName = delimiter + parts[1];
-            let indexPart =  parts[2];
+            let indexPart = parts[2];
             if (indexPart === "*" || indexPart.indexOf("/") >= 0) {
                 let startStep = indexPart === "*" ? [0, 1] : indexPart.split("/");
                 inflatedProperties = inflatedProperties.map(ip => ip + propertyPartName)
@@ -567,7 +576,7 @@ export function inflatePropertyIfMultiIndexed(property, object) {
     return inflatedProperties;
 }
 
-// startStepIter("foo", {foo:["a","b","c","d","e","f"]}, 1, 2) yields 1,3,5
+// startStepIter("foo", {"foo":["a","b","c","d","e","f"]}, 1, 2) yields 1,3,5
 function* startStepIter(property, object, startIndex, step) {
     let propertyValue = getPropertyValue(property, object);
     if (propertyValue !== undefined && Array.isArray(propertyValue)) {

@@ -13,30 +13,49 @@
 <body>
 <div id="console"></div>
 <script type="module">
-import {setValidationRules, isPropertyMandatory, validateMandatoryPropertyRules, isPropertyImmutable,
-    validateImmutablePropertyRules, validateContentPropertyRules, validateUpdatePropertyRules}
+import {setValidationRules,
+    isPropertyMandatory, validateMandatoryPropertyRules, validateMandatoryRules,
+    isPropertyImmutable, validateImmutablePropertyRules, validateImmutableRules,
+    validateContentPropertyRules, validateContentRules,
+    validateUpdatePropertyRules, validateUpdateRules}
     from './CrossLanguageValidation_ES6.js';
 import {sizeConstraintIsMet, rangeConstraintIsMet, dateConstraintIsMet, equalsConstraintIsMet, equalsRefConstraintIsMet,
     regexConstraintIsMet, inflatePropertyIfMultiIndexed} from './CrossLanguageValidation_ES6.js';
-import {testValidationRules, sometype} from './RegressionTestsData_ES6.js';
+import {testValidationRules, sometypeObject} from './RegressionTestsData_ES6.js';
 
-var console = document.getElementById("console");
+const console = document.getElementById("console");
+
+let okCount = 0, errorCount = 0;
 
 function log(text, cssClass = "info") {
-    var para = document.createElement("P");
+    const para = document.createElement("P");
     para.setAttribute("class", cssClass)
     para.appendChild(document.createTextNode(text));
     console.appendChild(para);
 }
+
+function logResult() {
+    const para = document.createElement("P");
+    para.appendChild(document.createTextNode("Test summary: Runs: " + (okCount + errorCount) + ", Failures: " + errorCount));
+    if (errorCount > 0) {
+        para.setAttribute("class", 'err')
+    } else {
+        para.setAttribute("class", 'info')
+    }
+    console.prepend(para);
+}
+
 function assert(msg, expected, compare) {
     if (Array.isArray(expected) && Array.isArray(compare)) {
         expected = expected.toString();
         compare = compare.toString();
     }
     if (expected !== compare) {
-        log("Assertion failure: " +  msg + ". Expected " + expected + ", but got " + compare, "err");
+        log('Assertion failure: ' +  msg + '. Expected "' + expected + '", but got "' + compare + '"', 'err');
+        errorCount += 1;
     } else {
-        log("Test o.k.: " +  msg, "ok");
+        log('Test o.k.: ' +  msg, 'ok');
+        okCount += 1;
     }
 }
 
@@ -45,65 +64,88 @@ setValidationRules(testValidationRules);
 
 log(">>> Testing isPropertyMandatory")
 assert('non-existing property is not mandatory',
-    false, isPropertyMandatory("sometype", "non-existing", sometype));
+    false, isPropertyMandatory("sometype", "non-existing", sometypeObject));
 assert('customer (with no conditions) is mandatory ',
-    true, isPropertyMandatory("sometype", "customer", sometype));
+    true, isPropertyMandatory("sometype", "customer", sometypeObject));
 assert('number1 is mandatory for permission "aaa"',
-    true, isPropertyMandatory("sometype", "number1", sometype, ["aaa", "xxx"]));
+    true, isPropertyMandatory("sometype", "number1", sometypeObject, ["aaa", "xxx"]));
 assert('number1 is mandatory for permission "bbb"',
-    true, isPropertyMandatory("sometype", "number1", sometype, ["xxx", "bbb"]));
+    true, isPropertyMandatory("sometype", "number1", sometypeObject, ["xxx", "bbb"]));
 assert('number1 is mandatory for permission "ccc"',
-    true, isPropertyMandatory("sometype", "number1", sometype, ["ccc"]));
+    true, isPropertyMandatory("sometype", "number1", sometypeObject, ["ccc"]));
 assert('number1 is mandatory for no (matching) permission',
-    true, isPropertyMandatory("sometype", "number1", sometype, ["xxx"]));
+    true, isPropertyMandatory("sometype", "number1", sometypeObject, ["xxx"]));
 assert('array with *-index is mandatory',
-    true, isPropertyMandatory("sometype", "stringArray[*]", sometype));
+    true, isPropertyMandatory("sometype", "stringArray[*]", sometypeObject));
+assert('#distinct not allowed',
+    false, isPropertyMandatory("sometype", "stringArray[*]#distinct", sometypeObject));
 
 
 log(">>> Testing validateMandatoryPropertyRules")
 assert('number1 is mandatory and not null',
-    "VALID", validateMandatoryPropertyRules("sometype", "number1", {"number1": 1}));
+    "", validateMandatoryPropertyRules("sometype", "number1", {"number1": 1}));
 assert('number1 is mandatory but null',
     "error.validation.mandatory.sometype.number1",
     validateMandatoryPropertyRules("sometype", "number1", {"number1": null}));
 assert('stringArray[*] elements are not null',
-    "VALID", validateMandatoryPropertyRules("sometype", "stringArray[*]", sometype));
+    "", validateMandatoryPropertyRules("sometype", "stringArray[*]", sometypeObject));
+
+log(">>> Testing validateMandatoryRules")
+assert('Expecting empty error array',
+    [], validateMandatoryRules("sometype", sometypeObject));
+assert('Expecting array with 2 errors',
+    ['error.validation.mandatory.sometype.customer#errcodesuffix','error.validation.mandatory.sometype.number1'],
+    validateMandatoryRules("sometype", {"customer": null, "number1": null}));
 
 
 log(">>> Testing isPropertyImmutable")
 assert('number1 is immutable for no (matching) permission',
-    true, isPropertyImmutable("sometype", "number1", sometype));
+    true, isPropertyImmutable("sometype", "number1", sometypeObject));
+assert('#distinct not allowed',
+    false, isPropertyImmutable("sometype", "stringArray[*]#distinct", sometypeObject));
 
 
 log(">>> Testing validateImmutablePropertyRules")
 assert('number1 is immutable and unchanged',
-    "VALID", validateImmutablePropertyRules("sometype", "number1", {"number1": 1}, {"number1": 1}));
+    "", validateImmutablePropertyRules("sometype", "number1", {"number1": 1}, {"number1": 1}));
 assert('number1 is immutable but changed',
     "error.validation.immutable.sometype.number1",
     validateImmutablePropertyRules("sometype", "number1", {"number1": 1}, {"number1": 2}));
 
 
 log(">>> Testing validateContentPropertyRules")
+assert('nullValue EQUALS_NULL',
+    "", validateContentPropertyRules("sometype", "nullValue", {"nullValue": null}));
+
 assert('Number RANGE fits',
-    "VALID", validateContentPropertyRules("sometype", "number1", {"number1": 3}));
+    "", validateContentPropertyRules("sometype", "number1", {"number1": 3}));
 assert('Number RANGE min fails',
     "error.validation.content.range.sometype.number1",
     validateContentPropertyRules("sometype", "number1", {"number1": 0}));
 assert('Number RANGE max fails',
     "error.validation.content.range.sometype.number1",
     validateContentPropertyRules("sometype", "number1", {"number1": 11}));
+assert('Number RANGE bigint fits number',
+    "", validateContentPropertyRules("sometype", "number1", {"number1": 10n}));
+assert('Date RANGE fits',
+    "", validateContentPropertyRules("sometype", "someDate", {"someDate": "2022-01-01T12:00:00Z"}));
+assert('Date RANGE min fails',
+    "error.validation.content.range.sometype.someDate",
+    validateContentPropertyRules("sometype", "someDate", {"someDate": "2000-01-01T00:00:00Z"}));
+assert('Date RANGE max fails',
+    "error.validation.content.range.sometype.someDate",
+    validateContentPropertyRules("sometype", "someDate", {"someDate": "3000-01-01T00:00:00Z"}));
+
 assert('String SIZE fits',
-    "VALID", validateContentPropertyRules("sometype", "someString", {"someString": "right size"}));
+    "", validateContentPropertyRules("sometype", "someString", {"someString": "right size"}));
 assert('String SIZE min fails',
     "error.validation.content.size.sometype.someString",
     validateContentPropertyRules("sometype", "someString", {"someString": ""}));
 assert('String SIZE max fails',
     "error.validation.content.size.sometype.someString",
     validateContentPropertyRules("sometype", "someString", {"someString": "just to long"}));
-assert('nullValue EQUALS_NULL',
-    "VALID", validateContentPropertyRules("sometype", "nullValue", {"nullValue": null}));
 assert('stringArray SIZE o.k.',
-    "VALID", validateContentPropertyRules("sometype", "stringArray", {"stringArray": [1, 2]}));
+    "", validateContentPropertyRules("sometype", "stringArray", {"stringArray": [1, 2]}));
 assert('stringArray SIZE to small',
     "error.validation.content.size.sometype.stringArray",
     validateContentPropertyRules("sometype", "stringArray", {"stringArray": [1]}));
@@ -111,12 +153,32 @@ assert('stringArray SIZE to big',
     "error.validation.content.size.sometype.stringArray",
     validateContentPropertyRules("sometype", "stringArray", {"stringArray": [1, 2, 3, 4]}));
 
+assert('integerArray[*]#sum equals 6',
+    "", validateContentPropertyRules("sometype", "integerArray[*]#sum", {"integerArray": [1, 2, 3]}, ["aaa"]));
+assert('integerArray[*]#sum in range(1, 6)',
+    "", validateContentPropertyRules("sometype", "integerArray[*]#sum", {"integerArray": [1, 2, 3]}, ["bbb"]));
+assert('integerArray[*]#sum not equals 6',
+    "error.validation.content.equals_any.sometype.integerArray[*]#sum",
+    validateContentPropertyRules("sometype", "integerArray[*]#sum", {"integerArray": [1, 2, 4]}, ["aaa"]));
+assert('integerArray[*]#sum not in range(1, 6)',
+    "error.validation.content.range.sometype.integerArray[*]#sum",
+    validateContentPropertyRules("sometype", "integerArray[*]#sum", {"integerArray": [1, 2, 4]}, ["bbb"]));
+
+assert('integerArray[*]#distinct equals true',
+    "", validateContentPropertyRules("sometype", "integerArray[*]#distinct", {"integerArray": [1, 2, 3]}, ["aaa"]));
+assert('integerArray[*]#distinct equals false',
+    "", validateContentPropertyRules("sometype", "integerArray[*]#distinct", {"integerArray": [1, 2, 1]}));
+assert('stringArray[*]#distinct equals true',
+    "", validateContentPropertyRules("sometype", "stringArray[*]#distinct", {"stringArray": ["a", "b", "c"]}, ["aaa"]));
+assert('stringArray[*]#distinct equals false',
+    "", validateContentPropertyRules("sometype", "stringArray[*]#distinct", {"stringArray": ["a", "b", "a"]}));
+
 
 log(">>> Testing validateUpdatePropertyRules")
 assert('Update someString from "foo" to "bar" is allowed',
-    "VALID", validateUpdatePropertyRules("sometype", "someString", {"someString": "foo"}, {"someString": "bar"}));
+    "", validateUpdatePropertyRules("sometype", "someString", {"someString": "foo"}, {"someString": "bar"}));
 assert('Update someString from "foo" to "zoo" is allowed for permission "aaa"',
-    "VALID", validateUpdatePropertyRules("sometype", "someString", {"someString": "foo"}, {"someString": "zoo"}, ["aaa"]));
+    "", validateUpdatePropertyRules("sometype", "someString", {"someString": "foo"}, {"someString": "zoo"}, ["aaa"]));
 assert('Update someString from "foo" to "zoo" is not allowed w/o permission "aaa"',
     "error.validation.update.equals_any.sometype.someString",
     validateUpdatePropertyRules("sometype", "someString", {"someString": "foo"}, {"someString": "zoo"}));
@@ -158,6 +220,21 @@ assert('Value EQUALS_NONE_REF value',
 assert('Value not EQUALS_NONE_REF value',
     false, equalsRefConstraintIsMet({"type": "EQUALS_NONE_REF" , "values": ["prop1", "prop2[*]"]}, "zoo",
         {"prop1": "val", "prop2": ["foo", "bar", "zoo"]}));
+assert('Date EQUALS_ANY_REF date',
+    true, equalsRefConstraintIsMet({"type": "EQUALS_ANY_REF" , "values": ["prop1", "prop2[*]"]}, "2022-01-01",
+        {"prop1": "1999-01-01", "prop2": ["2000-01-01", "2010-01-01", "2022-01-01"]}));
+assert('Number EQUALS_ANY_REF number#sum',
+    true, equalsRefConstraintIsMet({"type": "EQUALS_ANY_REF" , "values": ["prop1[*]#sum", "prop2[*]#sum"]}, 15,
+        {"prop1": [1, 2, 3], "prop2": [4, 5, 6]}));
+assert('Number not EQUALS_ANY_REF number#sum',
+    false, equalsRefConstraintIsMet({"type": "EQUALS_ANY_REF" , "values": ["prop1[*]#sum", "prop2[*]#sum"]}, 99,
+        {"prop1": [1, 2, 3], "prop2": [4, 5, 6]}));
+assert('Boolean EQUALS_ANY_REF number#distinct',
+    true, equalsRefConstraintIsMet({"type": "EQUALS_ANY_REF" , "values": ["prop1[*]#distinct"]}, true,
+        {"prop1": [1, 2, 3]}));
+assert('Boolean not EQUALS_ANY_REF number#distinct',
+    false, equalsRefConstraintIsMet({"type": "EQUALS_ANY_REF" , "values": ["prop1[*]#distinct"]}, true,
+        {"prop1": [1, 2, 2]}));
 
 
 log(">>> Testing regexConstraintIsMet")
@@ -281,7 +358,8 @@ assert('combined-index is inflated correct',
     ["a[0].b[0].c[2].d","a[1].b[0].c[2].d","a[1].b[1].c[2].d"],
     inflatePropertyIfMultiIndexed("a[*].b[0/1].c[2].d", {a:[{b:[0]},{b:[0,0]}]}));
 
-log("END OF TESTS")
+log("END OF TESTS");
+logResult();
 </script>
 </body>
 </html>

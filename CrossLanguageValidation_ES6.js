@@ -1,5 +1,7 @@
+const SCHEMA_VERSION = "0.5";
+
 const emptyValidationRules = {
-    "schema-version": "0.3",
+    "schema-version": SCHEMA_VERSION,
     "mandatoryRules": {},
     "immutableRules": {},
     "contentRules": {},
@@ -8,59 +10,92 @@ const emptyValidationRules = {
 
 let crossLanguageValidationRules = emptyValidationRules;
 
-let defaultMandatoryMessage = "error.validation.mandatory";
-let defaultImmutableMessage = "error.validation.immutable";
-let defaultContentMessage = "error.validation.content";
-let defaultUpdateMessage = "error.validation.update";
+let defaultMandatoryMessage = "error.validation.mandatory.";
+let defaultImmutableMessage = "error.validation.immutable.";
+let defaultContentMessage = "error.validation.content.";
+let defaultUpdateMessage = "error.validation.update.";
+
+const EQUALS_NOT_NULL_CONSTRAINT = {type: "EQUALS_NOT_NULL"};
 
 export function setValidationRules(rules) {
     if (rules === undefined || rules === null
-        || rules["schema-version"] !== "0.3"
+        || rules["schema-version"] !== SCHEMA_VERSION
         || rules.mandatoryRules === undefined
         || rules.immutableRules === undefined
         || rules.contentRules === undefined
         || rules.updateRules === undefined) {
-        console.error("Rules are not valid. Top level content does not match the scheme 0.3");
+        console.error("Rules are not valid. Top level content does not match the schema version %s", SCHEMA_VERSION);
         crossLanguageValidationRules = emptyValidationRules;
     } else {
         crossLanguageValidationRules = rules;
     }
 }
 
-export function isPropertyMandatory(typeName, property, object, userPerms) {
-    if (object === undefined) {
-        return undefined;
-    }
-    console.debug("DEBUG - Checking mandatory rules for:", typeName, property);
-    let typeRules = crossLanguageValidationRules.mandatoryRules[typeName];
-    return getMatchingPropertyConstraint(typeRules, property, object, userPerms) !== undefined;
+export function validateMandatoryRules(typeName, object, userPerms) {
+    return Object.keys(object)
+        .map(property => validateMandatoryPropertyRules(typeName, property, object, userPerms))
+        .filter(e => e !== "");
 }
 
-const EQUALS_NOT_NULL_CONSTRAINT = {type: "EQUALS_NOT_NULL"};
 export function validateMandatoryPropertyRules(typeName, property, object, userPerms) {
-    if (isPropertyMandatory(typeName, property, object, userPerms)
+    const rule = getMatchingMandatoryPropertyRule(typeName, property, object, userPerms);
+    if (rule !== undefined
         && !conditionIsMet({property: property, constraint: EQUALS_NOT_NULL_CONSTRAINT}, object)) {
-        return defaultMandatoryMessage + "." + typeName + "." + property;
+        return buildErrorMessage(defaultMandatoryMessage, null, typeName, rule.errorCodeControl, property);
     }
-    return "VALID";
+    return "";
 }
 
-export function isPropertyImmutable(typeName, property, object, userPerms) {
+export function isPropertyMandatory(typeName, property, object, userPerms) {
+    console.debug("DEBUG - Checking mandatory rules for:", typeName, property);
+    return getMatchingMandatoryPropertyRule(typeName, property, object, userPerms) !== undefined;
+}
+
+function getMatchingMandatoryPropertyRule(typeName, property, object, userPerms) {
     if (object === undefined) {
         return undefined;
     }
-    console.debug("DEBUG - Checking immutable rules for:", typeName, property);
-    let typeRules = crossLanguageValidationRules.immutableRules[typeName];
-    return getMatchingPropertyConstraint(typeRules, property, object, userPerms) !== undefined;
+    if (validateAndGetTerminalAggregateFunctionIfExist(property)) {
+        console.error("Aggregate functions are not allowed for mandatory property rules: %s", property);
+        return undefined;
+    }
+    let typeRules = crossLanguageValidationRules.mandatoryRules[typeName];
+    return getMatchingPropertyRule(typeRules, property, object, userPerms);
+}
+
+
+export function validateImmutableRules(typeName, originalObject, modifiedObject, userPerms) {
+    return Object.keys(originalObject)
+        .map(property => validateImmutablePropertyRules(typeName, property, originalObject, modifiedObject, userPerms))
+        .filter(e => e !== "");
 }
 
 export function validateImmutablePropertyRules(typeName, property, originalObject, modifiedObject, userPerms) {
-    if (isPropertyImmutable(typeName, property, originalObject, userPerms)
+    const rule = getMatchingImmutablePropertyRule(typeName, property, originalObject, userPerms);
+    if (rule !== undefined
         && !propertyValuesEquals(property, originalObject, modifiedObject)) {
-        return defaultImmutableMessage + "." + typeName + "." + property;
+        return buildErrorMessage(defaultImmutableMessage, null, typeName, rule.errorCodeControl, property);
     }
-    return "VALID";
+    return "";
 }
+
+export function isPropertyImmutable(typeName, property, object, userPerms) {
+    console.debug("DEBUG - Checking immutable rules for:", typeName, property);
+    return getMatchingImmutablePropertyRule(typeName, property, object, userPerms) !== undefined;
+}
+
+function getMatchingImmutablePropertyRule(typeName, property, object, userPerms) {
+    if (object === undefined) {
+        return undefined;
+    }
+    if (validateAndGetTerminalAggregateFunctionIfExist(property)) {
+        console.error("Aggregate functions are not allowed for immutable property rules: %s", property);
+        return undefined;
+    }
+    let typeRules = crossLanguageValidationRules.immutableRules[typeName];
+    return getMatchingPropertyRule(typeRules, property, object, userPerms);
+}
+
 
 function propertyValuesEquals(property, originalObject, modifiedObject) {
     let propertiesToCheck = inflatePropertyIfMultiIndexed(property, originalObject);
@@ -70,7 +105,8 @@ function propertyValuesEquals(property, originalObject, modifiedObject) {
     for (let propertyToCheck of propertiesToCheck) {
         let originalValue = getPropertyValue(propertyToCheck, originalObject);
         let modifiedValue = getPropertyValue(propertyToCheck, modifiedObject);
-        console.debug("Property '{}': original value is '{}', modified value is '{}'", propertyToCheck, originalValue, modifiedValue);
+        console.debug("Property '{}': original value is '{}', modified value is '{}'", propertyToCheck, originalValue,
+            modifiedValue);
         if (originalValue !== modifiedValue) {
             return false;
         }
@@ -78,43 +114,101 @@ function propertyValuesEquals(property, originalObject, modifiedObject) {
     return true;
 }
 
-function getPropertyContentConstraint(typeName, property, object, userPerms) {
-    if (object === undefined) {
-        return undefined;
-    }
-    console.info("INFO - Checking content rules for:", typeName, property);
-    let typeRules = crossLanguageValidationRules.contentRules[typeName];
-    return getMatchingPropertyConstraint(typeRules, property, object, userPerms);
+
+export function validateContentRules(typeName, object, userPerms) {
+    return Object.keys(object)
+        .map(property => validateContentPropertyRules(typeName, property, object, userPerms))
+        .filter(e => e !== "");
 }
 
 export function validateContentPropertyRules(typeName, property, object, userPerms) {
-    let constraint = getPropertyContentConstraint(typeName, property, object, userPerms);
+    let rule = getMatchingContentPropertyRule(typeName, property, object, userPerms);
+    let constraint = rule.constraint;
     if (constraint !== undefined && constraint.type !== undefined
         && !conditionIsMet({property: property, constraint: constraint}, object)) {
-        return defaultContentMessage + "." + constraint.type.toLowerCase() + "." + typeName + "." + property;
+        return buildErrorMessage(defaultContentMessage, constraint.type.toLowerCase(), typeName, rule.errorCodeControl,
+            property);
     }
-    return "VALID";
+    return "";
 }
 
-function getPropertyUpdateConstraint(typeName, property, object, userPerms) {
+function getMatchingContentPropertyRule(typeName, property, object, userPerms) {
+    if (object === undefined) {
+        return undefined;
+    }
+    console.info("Checking content rules for:", typeName, property);
+    let typeRules = crossLanguageValidationRules.contentRules[typeName];
+    return getMatchingPropertyRule(typeRules, property, object, userPerms);
+}
+
+
+export function validateUpdateRules(typeName, property, originalObject, modifiedObject, userPerms) {
+    return Object.keys(originalObject)
+        .map(prop => validateUpdatePropertyRules(typeName, prop, originalObject, modifiedObject, userPerms))
+        .filter(e => e !== "");
+}
+
+export function validateUpdatePropertyRules(typeName, property, originalObject, modifiedObject, userPerms) {
+    let rule = getMatchingUpdatePropertyRule(typeName, property, originalObject, userPerms);
+    let constraint = rule.constraint;
+    if (constraint !== undefined && constraint.type !== undefined
+        && !conditionIsMet({property: property, constraint: constraint}, modifiedObject)) {
+        return buildErrorMessage(defaultUpdateMessage, constraint.type.toLowerCase(), typeName, rule.errorCodeControl,
+            property);
+    }
+    return "";
+}
+
+function getMatchingUpdatePropertyRule(typeName, property, object, userPerms) {
     if (object === undefined) {
         return undefined;
     }
     console.debug("DEBUG - Checking update rules for:", typeName, property);
     let typeRules = crossLanguageValidationRules.updateRules[typeName];
-    return getMatchingPropertyConstraint(typeRules, property, object, userPerms);
+    return getMatchingPropertyRule(typeRules, property, object, userPerms);
 }
 
-export function validateUpdatePropertyRules(typeName, property, originalObject, modifiedObject, userPerms) {
-    let constraint = getPropertyUpdateConstraint(typeName, property, originalObject, userPerms);
-    if (constraint !== undefined && constraint.type !== undefined
-        && !conditionIsMet({property: property, constraint: constraint}, modifiedObject)) {
-        return defaultUpdateMessage + "." + constraint.type.toLowerCase() + "." + typeName + "." + property;
+
+function buildErrorMessage(defaultMessagePrefix, constraintType, typeJsonKey, errorCodeControl, property) {
+    const constraintTypePart = constraintType !== null ? constraintType + "." : "";
+    const defaultErrorMessage = defaultMessagePrefix + constraintTypePart + typeJsonKey + "." + property;
+    return applyErrorCodeControl(errorCodeControl, defaultErrorMessage);
+}
+
+function applyErrorCodeControl(errorCodeControl, defaultErrorMessage) {
+    if (errorCodeControl === undefined) {
+        return defaultErrorMessage;
     }
-    return "VALID";
+    const code = errorCodeControl.code;
+    if (errorCodeControl.useType === "AS_SUFFIX") {
+        return defaultErrorMessage + code;
+    }
+    return code;
 }
 
-function getMatchingPropertyConstraint(typeRules, property, object, userPerms) {
+
+function validateAndGetTerminalAggregateFunctionIfExist(property) {
+    const propertySplit = property.split("#");
+    if (propertySplit.length > 2) {
+        console.error("Property must not contain more then one aggregate function markers (#): %s", property);
+        return null;
+    }
+    if (propertySplit.length === 2) {
+        if (property.indexOf("[") === -1) {
+            console.error("Aggregate functions are only allowed for indexed properties: %s", property);
+            return null;
+        }
+        const functionName = propertySplit[1];
+        if (functionName !== "sum" && functionName !== "distinct") {
+            console.error("Property contains unknown aggregate function: %s" + property);
+            return null;
+        }
+        return functionName;
+    }
+    return null;
+}
+
+function getMatchingPropertyRule(typeRules, property, object, userPerms) {
     let propertyRules = typeRules !== undefined ? typeRules[property] : undefined;
     if (propertyRules === undefined) {
         return undefined;
@@ -123,22 +217,20 @@ function getMatchingPropertyConstraint(typeRules, property, object, userPerms) {
         return {};
     }
     // find first constraint with matching permission and valid conditions
-    for (const item of propertyRules) {
-        let permissions = item["permissions"];
+    for (const rule of propertyRules) {
+        let permissions = rule["permissions"];
         if (permissions!== undefined
             && arePermissionsMatching(permissions, userPerms)
-            && allConditionsAreMet(getConditionsTopGroup(item), object)) {
-            let constraint = item["constraint"];
-            return constraint !== undefined ? constraint : {};
+            && allConditionsAreMet(getConditionsTopGroup(rule), object)) {
+            return rule;
         }
     }
     // find first default constraint (w/o any permission) and valid conditions
-    for (const item of propertyRules) {
-        let permissions = item["permissions"];
+    for (const rule of propertyRules) {
+        let permissions = rule["permissions"];
         if (permissions === undefined
-            && allConditionsAreMet(getConditionsTopGroup(item), object)) {
-            let constraint = item["constraint"];
-            return constraint !== undefined ? constraint : {};
+            && allConditionsAreMet(getConditionsTopGroup(rule), object)) {
+            return rule;
         }
     }
     return undefined;
@@ -152,13 +244,13 @@ function arePermissionsMatching(conditionPerms, userPerms) {
     console.debug(conditionPerms["values"], "intersect", userPerms, "?", matchingPerms)
     switch (conditionPerms.type) {
         case 'ALL':
-            return matchingPerms.length == userPerms.length;
+            return matchingPerms.length === userPerms.length;
         case 'ANY':
             return matchingPerms.length > 0;
         case 'NONE':
-            return matchingPerms.length == 0;
+            return matchingPerms.length === 0;
         default:
-            console.error("ERROR - Permissions type not supported: ", conditionPerms.type)
+            console.error("Permissions type not supported: ", conditionPerms.type)
         return false;
     }
 }
@@ -193,7 +285,7 @@ function getConditionsTopGroup(propertyRule) {
  */
 function allConditionsAreMet(conditionsTopGroup, object) {
     if (conditionsTopGroup["conditionsGroups"] === undefined) {
-        console.error("ERROR - Should not happen: conditionsGroups === undefined")
+        console.error("Should not happen: conditionsGroups === undefined")
         return false;
     }
     let operator = conditionsTopGroup["operator"];
@@ -230,7 +322,7 @@ function groupConditionsAreMet(conditionsSubGroup, object) {
                 return false;
             }
         } else {
-            console.error("ERROR - Should never happen: unknown operator:", operator);
+            console.error("Should never happen: unknown operator:", operator);
         }
     }
     return operator === "AND";
@@ -240,19 +332,51 @@ function groupConditionsAreMet(conditionsSubGroup, object) {
  * Validates the condition against the object.
  */
 function conditionIsMet(condition, object) {
-    let propertiesToCheck = inflatePropertyIfMultiIndexed(condition.property, object);
-    for (const property of propertiesToCheck) {
-        let propValue = getPropertyValue(property, object)
-        console.debug("DEBUG - propertiesToCheck: ", propertiesToCheck, ", propValue: ", propValue)
-        if (propValue === undefined) {
-            console.warn("WARN - Condition ", condition, "propValue is undefined; return false")
-            return false;
+    const aggregateFunction = validateAndGetTerminalAggregateFunctionIfExist(condition.property);
+    const pureProperty = condition.property.split("#")[0];
+    const propertiesToCheck = inflatePropertyIfMultiIndexed(pureProperty, object);
+    if (aggregateFunction != null) {
+        switch(aggregateFunction) {
+            case "sum":
+                const sum = sumUpPropertyValues(object, propertiesToCheck);
+                return constraintIsValid(condition.constraint, sum, object);
+            case "distinct":
+                const distinct = distinctCheckForPropertyValues(object, propertiesToCheck);
+                return constraintIsValid(condition.constraint, distinct, object);
+            default:
+                console.error("Should not happen. Unsupported: %s", aggregateFunction)
+                return false;
         }
-        if (!constraintIsValid(condition.constraint, propValue, object)) {
-            return false;
+    } else {
+        for (const property of propertiesToCheck) {
+            const propValue = getPropertyValue(property, object)
+            console.debug("DEBUG - propertiesToCheck: ", propertiesToCheck, ", propValue: ", propValue)
+            if (propValue === undefined) {
+                console.warn("Condition ", condition, "propValue is undefined; return false")
+                return false;
+            }
+            if (!constraintIsValid(condition.constraint, propValue, object)) {
+                return false;
+            }
         }
     }
     return true;
+}
+
+function sumUpPropertyValues(object, propertiesToCheck) {
+    const propertyValues = propertiesToCheck.map(p => getPropertyValue(p, object));
+    const sum = propertyValues.reduce((partialSum, a) => partialSum + a, 0);
+    console.debug("DEBUG - sumUpPropertyValues: %s", sum)
+    return sum;
+}
+
+//TODO Support for JSON objects? e.g. JSON.stringify(obj1) === JSON.stringify(obj2)
+function distinctCheckForPropertyValues(object, propertiesToCheck) {
+    const propertyValues = propertiesToCheck.map(p => getPropertyValue(p, object));
+    const distinctValues = [...new Set(propertyValues)];
+    const distinct = propertyValues.length === distinctValues.length;
+    console.debug("DEBUG - distinctCheckForPropertyValues: %s", distinct)
+    return distinct;
 }
 
 function constraintIsValid(constraint, propValue, object) {
@@ -282,7 +406,7 @@ function constraintIsValid(constraint, propValue, object) {
             isMet =  dateConstraintIsMet(constraint, propValue);
             break;
         default:
-            console.error("ERROR - Constraint type not supported (yet): ", constraint.type)
+            console.error("Constraint type not supported (yet): ", constraint.type)
     }
     //console.debug("DEBUG - constraint:", constraint, "->", isMet)
     return isMet;
@@ -291,7 +415,7 @@ function constraintIsValid(constraint, propValue, object) {
 /**
  * Tries to find hierarchical properties value in item.
  * For example propertyName = 'location.type' will return the value of item.location.type.
- * Single-indexed properties are supported as well, eg. 'articles[0].accessories[1].name
+ * Single-indexed properties are supported as well, e.g. 'articles[0].accessories[1].name
  */
 function getPropertyValue(propertyName, object) {
     let propertyParts = propertyName.split(".");
@@ -308,11 +432,11 @@ function getPropertyValue(propertyName, object) {
                     console.debug("DEBUG - propertyValue[%d]: %s", index, propertyValue[index]);
                     propertyValue = propertyValue[index];
                 } else {
-                    console.error("ERROR - Indexed property is not an array:", propertyValue);
+                    console.error("Indexed property is not an array:", propertyValue);
                     return undefined;
                 }
             } else {
-                console.error("ERROR - Indexed property is not an array:", propertyValue);
+                console.error("Indexed property is not an array:", propertyValue);
                 return undefined;
             }
         }
@@ -352,7 +476,7 @@ export function equalsConstraintIsMet(constraint, propValue) {
         case 'EQUALS_NOT_NULL':
             return propValue !== null;
         default:
-            console.error("ERROR - Unknown equals constraint type: ", constraint.type)
+            console.error("Unknown equals constraint type: ", constraint.type)
     }
     return false;
 }
@@ -367,29 +491,49 @@ export function equalsRefConstraintIsMet(constraint, propValue, object) {
             if (propValueIsNullOrUndefined(propValue)) {
                 return (constraint.type === 'EQUALS_NONE_REF');
             }
-            let refValues = constraint.values
-                .flatMap(refProp => inflatePropertyIfMultiIndexed(refProp, object))
-                .map(prop => getPropertyValue(prop, object));
-            let propAsDate = new Date(propValue);
-            if (typeof propValue === 'string' && propAsDate instanceof Date && !isNaN(propAsDate)) {
-                let matchLength =  refValues.map(v => new Date(v))
-                    .filter(valueAsDate => +valueAsDate === +propAsDate).length;
-                if (constraint.type === 'EQUALS_ANY_REF') {
-                    return matchLength > 0;
-                } else {
-                    return matchLength === 0;
-                }
-            } else {
-                if (constraint.type === 'EQUALS_ANY_REF') {
-                    return refValues.indexOf(propValue) !== -1;
-                } else {
-                    return refValues.indexOf(propValue) === -1;
+            for (const refProp of constraint.values) {
+                if (singleRefPropertyMatch(refProp, propValue, object)) {
+                    return constraint.type === 'EQUALS_ANY_REF';
                 }
             }
+            return constraint.type === 'EQUALS_NONE_REF';
         default:
-            console.error("ERROR - Unknown equals ref constraint type: ", constraint.type)
+            console.error("Unknown equals ref constraint type: ", constraint.type)
     }
     return false;
+}
+
+function singleRefPropertyMatch(refProp, propValue, object) {
+    const aggregateFunction = validateAndGetTerminalAggregateFunctionIfExist(refProp);
+    const pureProperty = refProp.split("#")[0];
+    const propertiesToCheck = inflatePropertyIfMultiIndexed(pureProperty, object);
+    let equals = false;
+    if (aggregateFunction != null) {
+        switch(aggregateFunction) {
+            case "sum":
+                const sum = sumUpPropertyValues(object, propertiesToCheck);
+                equals = sum === propValue;
+                break;
+            case "distinct":
+                const distinct = distinctCheckForPropertyValues(object, propertiesToCheck);
+                equals = distinct === propValue;
+                break;
+            default:
+                console.error("Should not happen. Unsupported: %s", aggregateFunction)
+        }
+    } else {
+        const refValues = propertiesToCheck.map(prop => getPropertyValue(prop, object));
+        const propAsDate = new Date(propValue);
+        if (typeof propValue === 'string' && propAsDate instanceof Date && !isNaN(propAsDate)) {
+            const matchLength =  refValues.map(v => new Date(v))
+                .filter(valueAsDate => +valueAsDate === +propAsDate).length;
+            equals = matchLength > 0;
+        } else {
+            equals = refValues.indexOf(propValue) !== -1;
+        }
+    }
+    console.debug("" + propValue + (equals ? " " : " NOT ") + "equals referenced property " + refProp);
+    return equals;
 }
 
 /**
@@ -397,7 +541,7 @@ export function equalsRefConstraintIsMet(constraint, propValue, object) {
  */
 export function regexConstraintIsMet(constraint, propValue) {
     if (constraint.type !== 'REGEX_ANY') {
-        console.error("ERROR - Unknown regex constraint type: ", constraint.type)
+        console.error("Unknown regex constraint type: ", constraint.type)
         return false;
     }
     if (propValueIsNullOrUndefined(propValue)) {
@@ -418,16 +562,16 @@ export function regexConstraintIsMet(constraint, propValue) {
  */
 export function sizeConstraintIsMet(constraint, propValue) {
     if (constraint.type !== 'SIZE') {
-        console.error("ERROR - Size constraint must have 'type' property with value 'SIZE': ", constraint.type)
+        console.error("Size constraint must have 'type' property with value 'SIZE': ", constraint.type)
         return false;
     }
     if (constraint.min === undefined && constraint.max === undefined) {
-        console.error("ERROR - Size constraint must have at least 'min' or 'max' property: ", constraint)
+        console.error("Size constraint must have at least 'min' or 'max' property: ", constraint)
         return false;
     }
     if (constraint.min !== undefined && typeof constraint.min != 'number'
         || constraint.max !== undefined && typeof constraint.max != 'number') {
-        console.error("ERROR - Size constraint 'min' and 'max' values must have type 'number': ", constraint)
+        console.error("Size constraint 'min' and 'max' values must have type 'number': ", constraint)
         return false;
     }
     if (propValueIsNullOrUndefined(propValue)) {
@@ -444,7 +588,7 @@ export function sizeConstraintIsMet(constraint, propValue) {
         return (constraint.min === undefined || size >= constraint.min)
             && (constraint.max === undefined || size <= constraint.max)
     }
-    console.error("ERROR - Unsupported type of size constraint value:", typeof propValue)
+    console.error("Unsupported type of size constraint value:", typeof propValue)
     return false;
 }
 
@@ -453,29 +597,43 @@ export function sizeConstraintIsMet(constraint, propValue) {
  */
 export function rangeConstraintIsMet(constraint, propValue) {
     if (constraint.type !== 'RANGE') {
-        console.error("ERROR - Range constraint must have 'type' property with value 'RANGE': ", constraint.type)
+        console.error("Range constraint must have 'type' property with value 'RANGE': ", constraint.type)
         return false;
     }
     if (constraint.min === undefined && constraint.max === undefined) {
-        console.error("ERROR - Range constraint must have at least 'min' or 'max' property: ", constraint)
-        return false;
-    }
-    if (constraint.min !== undefined && typeof constraint.min != 'number'
-        || constraint.max !== undefined && typeof constraint.max != 'number') {
-        console.error("ERROR - Range constraint 'min' and 'max' values must have type 'number': ", constraint)
+        console.error("Range constraint must have at least 'min' or 'max' property: ", constraint)
         return false;
     }
     if (propValueIsNullOrUndefined(propValue)) {
         return false;
     }
 
-    // Check min <= length <= max
-    if (typeof propValue == "number") {
+    // Check min <= propValue <= max
+    if (typeof propValue === "number" || typeof propValue === "bigint") {
+        if (constraint.min !== undefined && typeof constraint.min != 'number' && typeof constraint.min != 'bigint'
+            || constraint.max !== undefined && typeof constraint.max != 'number' && typeof constraint.max != 'bigint') {
+            console.error("Range constraint 'min' and 'max' values must have type 'number' resp. 'bigint': ",
+                constraint)
+            return false;
+        }
         return (constraint.min === undefined || propValue >= constraint.min)
             && (constraint.max === undefined || propValue <= constraint.max)
-    } else {
-        console.error("ERROR - Unsupported type of range constraint value:", typeof propValue)
     }
+    let propAsDate = new Date(propValue);
+    if (typeof propValue === 'string' && propAsDate instanceof Date && !isNaN(propAsDate)) {
+        let minAsDate = new Date(constraint.min);
+        let maxAsDate = new Date(constraint.max);
+        if (constraint.min !== undefined
+            && (typeof constraint.min !== 'string' || !(minAsDate instanceof Date) || isNaN(minAsDate))
+            || constraint.max !== undefined
+            && (typeof constraint.max !== 'string' || !(maxAsDate instanceof Date) || isNaN(maxAsDate))) {
+            console.error("Range constraint 'min' resp. 'max' is not a valid ISO date string: ", constraint)
+            return false;
+        }
+        return (constraint.min === undefined || propAsDate >= minAsDate)
+            && (constraint.max === undefined || propAsDate <= maxAsDate)
+    }
+    console.error("Unsupported type of range constraint value:", typeof propValue)
     return false;
 }
 
@@ -484,7 +642,7 @@ export function rangeConstraintIsMet(constraint, propValue) {
  */
 export function dateConstraintIsMet(constraint, propValue) {
     if (constraint.days === undefined) {
-        console.error("ERROR - Date constraint must have 'days' property: ", constraint)
+        console.error("Date constraint must have 'days' property: ", constraint)
         return false;
     }
     if (propValueIsNullOrUndefined(propValue)) {
@@ -493,7 +651,7 @@ export function dateConstraintIsMet(constraint, propValue) {
 
     let propAsDate = new Date(propValue);
     if (typeof propValue !== 'string' || !(propAsDate instanceof Date) || isNaN(propAsDate)) {
-        console.error("ERROR - The property value is not a valid ISO date string: ", propValue)
+        console.error("The property value is not a valid ISO date string: ", propValue)
         return false;
     }
     propAsDate = stripOffTime(propAsDate);
@@ -505,7 +663,7 @@ export function dateConstraintIsMet(constraint, propValue) {
             propAsDate.setDate(propAsDate.getDate() + constraint.days);
             return propAsDate <= getToday();
         default:
-            console.error("ERROR - Date constraint must have 'type' property ['DATE_FUTURE', 'DATE_PAST']: ",
+            console.error("Date constraint must have 'type' property ['DATE_FUTURE', 'DATE_PAST']: ",
                 constraint.type)
     }
     return false;
@@ -513,13 +671,11 @@ export function dateConstraintIsMet(constraint, propValue) {
 
 function propValueIsNullOrUndefined(propValue) {
     if (propValue === undefined) {
-        console.error("ERROR - The property value should not be undefined.")
+        console.error("The property value should not be undefined.")
         return true;
     }
-    if (propValue === null) {
-        return true;
-    }
-    return false;
+    return propValue === null;
+
 }
 
 function getToday() {
@@ -557,7 +713,7 @@ export function inflatePropertyIfMultiIndexed(property, object) {
             } else if (indexPart.indexOf("-") >= 0) {
                 let interval = indexPart.split("-");
                 let arrayLength = +interval[1] - +interval[0] + 1;
-                let indexList = Array(arrayLength).fill().map((_, i) => i + +interval[0]);
+                let indexList = Array(arrayLength).fill(0).map((_, i) => i + +interval[0]);
                 inflatedProperties = inflatedProperties.map(ip => ip + propertyPartName)
                     .flatMap(ip => indexList.map(i => ip + "[" + i + "]"))
             } else {

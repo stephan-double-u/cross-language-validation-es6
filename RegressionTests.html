@@ -13,7 +13,7 @@
 <body>
 <div id="console"></div>
 <script type="module">
-import {setValidationRules,
+import {setValidationRules, getAllowedPropertyValues,
     isPropertyMandatory, validateMandatoryPropertyRules, validateMandatoryRules,
     isPropertyImmutable, validateImmutablePropertyRules, validateImmutableRules,
     validateContentPropertyRules, validateContentRules,
@@ -61,12 +61,24 @@ function assert(msg, expected, compare) {
 
 setValidationRules(testValidationRules);
 
+log(">>> Testing getAllowedPropertyValues")
+assert('undefined allowed properties if no EQUALS_ANY* constraint exist',
+    undefined, getAllowedPropertyValues("sometype", "number1", {"number1": 1}));
+assert('allowed properties if EQUALS_ANY content constraint exist',
+    ["one", "two"], getAllowedPropertyValues("sometype", "someString", {"notRelevant": 1}, ["aaa"]));
+assert('allowed properties if EQUALS_ANY_REF content constraint exist',
+    ["one", "two", "four", "six"], getAllowedPropertyValues("sometype", "someString",
+        {"stringArray": ["one", "two"], "stringArray2": ["three", "four", "five", "six", "seven"]}, ["bbb"]));
+assert('allowed properties if EQUALS_ANY update constraint exist',
+    ["foo", "bar"], getAllowedPropertyValues("sometype", "someString", {"someString": "foo"}));
 
 log(">>> Testing isPropertyMandatory")
 assert('non-existing property is not mandatory',
     false, isPropertyMandatory("sometype", "non-existing", sometypeObject));
-assert('customer (with no conditions) is mandatory ',
+assert('customer is mandatory ',
     true, isPropertyMandatory("sometype", "customer", sometypeObject));
+assert('customer.name is mandatory ',
+    true, isPropertyMandatory("sometype", "customer.name", sometypeObject));
 assert('number1 is mandatory for permission "aaa"',
     true, isPropertyMandatory("sometype", "number1", sometypeObject, ["aaa", "xxx"]));
 assert('number1 is mandatory for permission "bbb"',
@@ -77,6 +89,8 @@ assert('number1 is mandatory for no (matching) permission',
     true, isPropertyMandatory("sometype", "number1", sometypeObject, ["xxx"]));
 assert('array with *-index is mandatory',
     true, isPropertyMandatory("sometype", "stringArray[*]", sometypeObject));
+assert('#distinct not allowed',
+    false, isPropertyMandatory("sometype", "stringArray[*]#distinct", sometypeObject));
 assert('#distinct not allowed',
     false, isPropertyMandatory("sometype", "stringArray[*]#distinct", sometypeObject));
 
@@ -93,8 +107,10 @@ assert('stringArray[*] elements are not null',
 log(">>> Testing validateMandatoryRules")
 assert('Expecting empty error array',
     [], validateMandatoryRules("sometype", sometypeObject));
-assert('Expecting array with 2 errors',
-    ['error.validation.mandatory.sometype.customer#errcodesuffix','error.validation.mandatory.sometype.number1'],
+assert('Expecting array with 3 errors',
+    ['error.validation.mandatory.sometype.customer#errcodesuffix',
+        'error.validation.mandatory.sometype.customer.name',
+        'error.validation.mandatory.sometype.number1'],
     validateMandatoryRules("sometype", {"customer": null, "number1": null}));
 
 

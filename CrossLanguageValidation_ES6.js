@@ -31,8 +31,41 @@ export function setValidationRules(rules) {
     }
 }
 
+/**
+ * If there is a matching _content rule_ with an EQUALS_ANY resp. EQUALS_ANY_REF constraint for the property, the values
+ * of that constraint are returned. Otherwise, if there is a matching _update_ rule with an EQUALS_ANY resp.
+ * EQUALS_ANY_REF constraint for the property, the values of that constraint are returned. Otherwise, 'undefined' is
+ * returned.
+ */
+export function getAllowedPropertyValues(typeName, property, object, userPerms) {
+    const contentRule = getMatchingContentPropertyRule(typeName, property, object, userPerms);
+    let allowedValues = getAllowedPropertyValuesForRule(contentRule, object);
+    if (allowedValues === undefined) {
+        const updateRule = getMatchingUpdatePropertyRule(typeName, property, object, userPerms);
+        allowedValues = getAllowedPropertyValuesForRule(updateRule, object);
+    }
+    return allowedValues;
+}
+
+function getAllowedPropertyValuesForRule(rule, object) {
+    let constraint = rule !== undefined ? rule.constraint : undefined;
+    if (constraint !== undefined && constraint.type !== undefined) {
+        if (constraint.type === "EQUALS_ANY") {
+            return constraint.values;
+        } else if (constraint.type === "EQUALS_ANY_REF") {
+            const allValues = [];
+            for (const refProp of constraint.values) {
+                allValues.push(...getPropertyValues(refProp, object));
+            }
+            return allValues;
+        }
+    }
+    return undefined;
+}
+
 export function validateMandatoryRules(typeName, object, userPerms) {
-    return Object.keys(object)
+    let rules = crossLanguageValidationRules.mandatoryRules[typeName];
+    return rules === undefined ? [] : Object.keys(rules)
         .map(property => validateMandatoryPropertyRules(typeName, property, object, userPerms))
         .filter(e => e !== "");
 }
@@ -65,7 +98,8 @@ function getMatchingMandatoryPropertyRule(typeName, property, object, userPerms)
 
 
 export function validateImmutableRules(typeName, originalObject, modifiedObject, userPerms) {
-    return Object.keys(originalObject)
+    let rules = crossLanguageValidationRules.immutableRules[typeName];
+    return rules === undefined ? [] : Object.keys(rules)
         .map(property => validateImmutablePropertyRules(typeName, property, originalObject, modifiedObject, userPerms))
         .filter(e => e !== "");
 }
@@ -116,14 +150,15 @@ function propertyValuesEquals(property, originalObject, modifiedObject) {
 
 
 export function validateContentRules(typeName, object, userPerms) {
-    return Object.keys(object)
+    let rules = crossLanguageValidationRules.contentRules[typeName];
+    return rules === undefined ? [] : Object.keys(rules)
         .map(property => validateContentPropertyRules(typeName, property, object, userPerms))
         .filter(e => e !== "");
 }
 
 export function validateContentPropertyRules(typeName, property, object, userPerms) {
     let rule = getMatchingContentPropertyRule(typeName, property, object, userPerms);
-    let constraint = rule.constraint;
+    let constraint = rule !== undefined ? rule.constraint : undefined;
     if (constraint !== undefined && constraint.type !== undefined
         && !conditionIsMet({property: property, constraint: constraint}, object)) {
         return buildErrorMessage(defaultContentMessage, constraint.type.toLowerCase(), typeName, rule.errorCodeControl,
@@ -142,15 +177,16 @@ function getMatchingContentPropertyRule(typeName, property, object, userPerms) {
 }
 
 
-export function validateUpdateRules(typeName, property, originalObject, modifiedObject, userPerms) {
-    return Object.keys(originalObject)
-        .map(prop => validateUpdatePropertyRules(typeName, prop, originalObject, modifiedObject, userPerms))
+export function validateUpdateRules(typeName, originalObject, modifiedObject, userPerms) {
+    let rules = crossLanguageValidationRules.updateRules[typeName];
+    return rules === undefined ? [] : Object.keys(rules)
+        .map(property => validateUpdatePropertyRules(typeName, property, originalObject, modifiedObject, userPerms))
         .filter(e => e !== "");
 }
 
 export function validateUpdatePropertyRules(typeName, property, originalObject, modifiedObject, userPerms) {
     let rule = getMatchingUpdatePropertyRule(typeName, property, originalObject, userPerms);
-    let constraint = rule.constraint;
+    let constraint = rule !== undefined ? rule.constraint : undefined;
     if (constraint !== undefined && constraint.type !== undefined
         && !conditionIsMet({property: property, constraint: constraint}, modifiedObject)) {
         return buildErrorMessage(defaultUpdateMessage, constraint.type.toLowerCase(), typeName, rule.errorCodeControl,
@@ -332,27 +368,15 @@ function groupConditionsAreMet(conditionsSubGroup, object) {
  * Validates the condition against the object.
  */
 function conditionIsMet(condition, object) {
+    const propertyValues = getPropertyValues(condition.property, object)
     const aggregateFunction = validateAndGetTerminalAggregateFunctionIfExist(condition.property);
-    const pureProperty = condition.property.split("#")[0];
-    const propertiesToCheck = inflatePropertyIfMultiIndexed(pureProperty, object);
     if (aggregateFunction != null) {
-        switch(aggregateFunction) {
-            case "sum":
-                const sum = sumUpPropertyValues(object, propertiesToCheck);
-                return constraintIsValid(condition.constraint, sum, object);
-            case "distinct":
-                const distinct = distinctCheckForPropertyValues(object, propertiesToCheck);
-                return constraintIsValid(condition.constraint, distinct, object);
-            default:
-                console.error("Should not happen. Unsupported: %s", aggregateFunction)
-                return false;
-        }
+        const aggregatedValue = propertyValues[0];
+        return constraintIsValid(condition.constraint, aggregatedValue, object);
     } else {
-        for (const property of propertiesToCheck) {
-            const propValue = getPropertyValue(property, object)
-            console.debug("DEBUG - propertiesToCheck: ", propertiesToCheck, ", propValue: ", propValue)
+        for (const propValue of propertyValues) {
             if (propValue === undefined) {
-                console.warn("Condition ", condition, "propValue is undefined; return false")
+                console.warn("Condition ", condition, "propValue is undefined; return false");
                 return false;
             }
             if (!constraintIsValid(condition.constraint, propValue, object)) {
@@ -363,16 +387,35 @@ function conditionIsMet(condition, object) {
     return true;
 }
 
-function sumUpPropertyValues(object, propertiesToCheck) {
-    const propertyValues = propertiesToCheck.map(p => getPropertyValue(p, object));
+function getPropertyValues(property, object) {
+    const aggregateFunction = validateAndGetTerminalAggregateFunctionIfExist(property);
+    const pureProperty = property.split("#")[0];
+    const propertiesToCheck = inflatePropertyIfMultiIndexed(pureProperty, object);
+    const propertyValues = propertiesToCheck.map(prop => getPropertyValue(prop, object));
+    if (aggregateFunction === null) {
+        return propertyValues;
+    }
+    switch (aggregateFunction) {
+        case "sum":
+            const summation = sumUpPropertyValues(object, propertyValues);
+            return [summation];
+        case "distinct":
+            const valuesAreDistinct = distinctCheckForPropertyValues(object, propertyValues);
+            return [valuesAreDistinct];
+        default:
+            console.error("Should not happen. Unsupported: %s", aggregateFunction);
+            return [];
+    }
+}
+
+function sumUpPropertyValues(object, propertyValues) {
     const sum = propertyValues.reduce((partialSum, a) => partialSum + a, 0);
     console.debug("DEBUG - sumUpPropertyValues: %s", sum)
     return sum;
 }
 
 //TODO Support for JSON objects? e.g. JSON.stringify(obj1) === JSON.stringify(obj2)
-function distinctCheckForPropertyValues(object, propertiesToCheck) {
-    const propertyValues = propertiesToCheck.map(p => getPropertyValue(p, object));
+function distinctCheckForPropertyValues(object, propertyValues) {
     const distinctValues = [...new Set(propertyValues)];
     const distinct = propertyValues.length === distinctValues.length;
     console.debug("DEBUG - distinctCheckForPropertyValues: %s", distinct)
@@ -425,6 +468,9 @@ function getPropertyValue(propertyName, object) {
         let propertyPartName = propertyPart.split("[")[0];
         propertyValue = propertyValue[propertyPartName];
         console.debug("DEBUG - propertyPartName: %s, propertyValue: %s", propertyPartName, propertyValue)
+        if (propertyValue === null) {
+            return null;
+        }
         if (propertyPart.endsWith("]")) {
             let index = /\[(\d+)]/.exec(propertyPart)[1];
             if (Array.isArray(propertyValue)) {
@@ -441,7 +487,6 @@ function getPropertyValue(propertyName, object) {
             }
         }
     }
-    //console.log("getPropertyValue:", propertyName, "->", propertyValue);
     return propertyValue;
 }
 
@@ -452,9 +497,6 @@ export function equalsConstraintIsMet(constraint, propValue) {
     switch (constraint.type) {
         case 'EQUALS_ANY':
         case 'EQUALS_NONE':
-            if (propValueIsNullOrUndefined(propValue)) {
-                return (constraint.type === 'EQUALS_NONE');
-            }
             let propAsDate = new Date(propValue);
             if (typeof propValue === 'string' && propAsDate instanceof Date && !isNaN(propAsDate)) {
                 let matchLength =  constraint.values.map(v => new Date(v))
@@ -504,25 +546,13 @@ export function equalsRefConstraintIsMet(constraint, propValue, object) {
 }
 
 function singleRefPropertyMatch(refProp, propValue, object) {
+    const refValues = getPropertyValues(refProp, object)
     const aggregateFunction = validateAndGetTerminalAggregateFunctionIfExist(refProp);
-    const pureProperty = refProp.split("#")[0];
-    const propertiesToCheck = inflatePropertyIfMultiIndexed(pureProperty, object);
     let equals = false;
     if (aggregateFunction != null) {
-        switch(aggregateFunction) {
-            case "sum":
-                const sum = sumUpPropertyValues(object, propertiesToCheck);
-                equals = sum === propValue;
-                break;
-            case "distinct":
-                const distinct = distinctCheckForPropertyValues(object, propertiesToCheck);
-                equals = distinct === propValue;
-                break;
-            default:
-                console.error("Should not happen. Unsupported: %s", aggregateFunction)
-        }
+        const aggregatedValue = refValues[0];
+        equals = aggregatedValue === propValue;
     } else {
-        const refValues = propertiesToCheck.map(prop => getPropertyValue(prop, object));
         const propAsDate = new Date(propValue);
         if (typeof propValue === 'string' && propAsDate instanceof Date && !isNaN(propAsDate)) {
             const matchLength =  refValues.map(v => new Date(v))
@@ -547,12 +577,11 @@ export function regexConstraintIsMet(constraint, propValue) {
     if (propValueIsNullOrUndefined(propValue)) {
         return false;
     }
-    for (let regex of constraint.values) {
+    for (const regexString of constraint.values) {
+        const regex = new RegExp(regexString, "u");
         if (("" + propValue).match(regex)) {
-            //console.log(propValue, "match", regex);
             return true;
         }
-        //console.log(propValue, "not match", regex);
     }
     return false;
 }
@@ -735,7 +764,7 @@ export function inflatePropertyIfMultiIndexed(property, object) {
 // startStepIter("foo", {"foo":["a","b","c","d","e","f"]}, 1, 2) yields 1,3,5
 function* startStepIter(property, object, startIndex, step) {
     let propertyValue = getPropertyValue(property, object);
-    if (propertyValue !== undefined && Array.isArray(propertyValue)) {
+    if (Array.isArray(propertyValue)) {
         for (let i = startIndex; i < propertyValue.length; i++) {
             if (i >= startIndex && (i - startIndex) % step === 0) {
                 yield i;

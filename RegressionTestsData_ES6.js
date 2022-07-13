@@ -10,6 +10,8 @@ export const testValidationRules = {
                     }
                 }
             ],
+            "customer.name": [
+            ],
             "stringArray[*]": [
                 {
                     "condition": {
@@ -146,6 +148,36 @@ export const testValidationRules = {
                 }
             ],
             "someString": [
+                {
+                    "constraint": {
+                        "type": "EQUALS_ANY",
+                        "values": [
+                            "one",
+                            "two"
+                        ]
+                    },
+                    "permissions": {
+                        "type": "ANY",
+                        "values": [
+                            "aaa"
+                        ]
+                    }
+                },
+                {
+                    "constraint": {
+                        "type": "EQUALS_ANY_REF",
+                        "values": [
+                            "stringArray[*]",
+                            "stringArray2[1/2]"
+                        ]
+                    },
+                    "permissions": {
+                        "type": "ANY",
+                        "values": [
+                            "bbb"
+                        ]
+                    }
+                },
                 {
                     "constraint": {
                         "type": "SIZE",
@@ -316,8 +348,10 @@ export let sometypeObject = {
     "someBool": true,
     "nullValue": null,
     "stringArray": ["one", "two"],
+    "stringArray2": null,
     "integerArray": [1, 2, 3],
     "someMap": {"one": 1, "two": 2},
     "someDate": "2022-01-01T12:00:00+0000",
-    "otherDate": "2022-01-01T12:00:00Z"
+    "otherDate": "2022-01-01T12:00:00Z",
+    "customer": { "name": "someCustomer" }
 };

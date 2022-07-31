@@ -38,8 +38,9 @@ export const testValidationRules = {
                 },
                 {
                     "permissions": {
-                        "type": "ANY",
+                        "type": "ALL",
                         "values": [
+                            "aaa",
                             "bbb"
                         ]
                     },

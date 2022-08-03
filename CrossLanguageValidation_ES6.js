@@ -1,7 +1,7 @@
 const SCHEMA_VERSION = "0.6";
 
 const emptyValidationRules = {
-    "schema-version": SCHEMA_VERSION,
+    schemaVersion: SCHEMA_VERSION,
     mandatoryRules: {},
     immutableRules: {},
     contentRules: {},
@@ -23,7 +23,7 @@ let defaultUpdateMessagePrefix = "error.validation.update.";
  */
 export function setValidationRules(rules) {
     if (rules === undefined || rules === null
-        || rules["schema-version"] !== SCHEMA_VERSION
+        || rules.schemaVersion !== SCHEMA_VERSION
         || rules.mandatoryRules === undefined
         || rules.immutableRules === undefined
         || rules.contentRules === undefined

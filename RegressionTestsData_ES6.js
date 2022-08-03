@@ -1,5 +1,5 @@
 export const testValidationRules = {
-    "schema-version": "0.5",
+    "schema-version": "0.6",
     "mandatoryRules": {
         "sometype": {
             "customer": [
@@ -130,6 +130,14 @@ export const testValidationRules = {
     },
     "contentRules": {
         "sometype": {
+            "otherDate": [
+                {
+                    "constraint": {
+                        "type": "WEEKDAY_ANY",
+                        "days": ["SATURDAY", "null"]
+                    }
+                }
+            ],
             "number1": [
                 {
                     "constraint": {

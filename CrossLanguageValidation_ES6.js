@@ -1,4 +1,4 @@
-const SCHEMA_VERSION = "0.5";
+const SCHEMA_VERSION = "0.6";
 
 const emptyValidationRules = {
     "schema-version": SCHEMA_VERSION,
@@ -543,9 +543,13 @@ function constraintIsValid(constraint, propValue, object) {
         case 'RANGE':
             isMet =  rangeConstraintIsMet(constraint, propValue);
             break;
-        case 'DATE_FUTURE':
-        case 'DATE_PAST':
+        case 'FUTURE_DAYS':
+        case 'PAST_DAYS':
+        case 'PERIOD_DAYS':
             isMet =  dateConstraintIsMet(constraint, propValue);
+            break;
+        case 'WEEKDAY_ANY':
+            isMet =  weekdayConstraintIsMet(constraint, propValue);
             break;
         default:
             console.error("Constraint type not supported (yet): ", constraint.type)
@@ -784,11 +788,11 @@ function rangeMinMaxAreValidDates(constraint, minAsDate, maxAsDate) {
 }
 
 /**
- * Validates DATE_FUTURE and DATE_PAST constraint.
+ * Validates FUTURE_DAYS, PAST_DAYS and PERIOD_DAYS constraint.
  */
 export function dateConstraintIsMet(constraint, propValue) {
-    if (constraint.days === undefined) {
-        console.error("Date constraint must have 'days' property: ", constraint)
+    if (constraint.min === undefined && constraint.max === undefined) {
+        console.error("Date constraint must have at least 'min' or 'max' property: ", constraint);
         return false;
     }
     if (propValueIsNullOrUndefined(propValue)) {
@@ -801,18 +805,57 @@ export function dateConstraintIsMet(constraint, propValue) {
         return false;
     }
     propAsDate = stripOffTime(propAsDate);
-    switch (constraint.type) {
-        case 'DATE_FUTURE':
-            propAsDate.setDate(propAsDate.getDate() - constraint.days);
-            return propAsDate >= getToday();
-        case 'DATE_PAST':
-            propAsDate.setDate(propAsDate.getDate() + constraint.days);
-            return propAsDate <= getToday();
-        default:
-            console.error("Date constraint must have 'type' property ['DATE_FUTURE', 'DATE_PAST']: ",
-                constraint.type)
+
+    let minDays = constraint.min;
+    let maxDays = constraint.max;
+    if ("PAST_DAYS" === constraint.type) {
+        const minDaysCopy = minDays;
+        minDays = maxDays !== undefined ? -1 * maxDays : undefined;
+        maxDays = minDaysCopy !== undefined ? -1 * minDaysCopy : undefined;
     }
-    return false;
+
+    let minDaysDate;
+    if (minDays !== undefined) {
+        minDaysDate = getToday();
+        minDaysDate.setDate(minDaysDate.getDate() + minDays);
+    }
+    let maxDaysDate;
+    if (maxDays !== undefined) {
+        maxDaysDate = getToday();
+        maxDaysDate.setDate(maxDaysDate.getDate() + maxDays);
+    }
+
+    const match = (minDaysDate === undefined || propAsDate >= minDaysDate)
+        && (maxDaysDate === undefined || propAsDate <= maxDaysDate);
+
+    console.debug("dateConstraintIsMet: ", constraint, minDaysDate?.toISOString(), "<=", propAsDate.toISOString(), "<=", maxDaysDate?.toISOString(), ":", match);
+    return match;
+}
+
+/**
+ * Validates WEEKDAY_ANY constraint.
+ */
+export function weekdayConstraintIsMet(constraint, propValue) {
+    if (constraint.days === undefined || !Array.isArray(constraint.days) || constraint.days.length === 0) {
+        console.error("WEEKDAY_ANY constraint is missing 'days' array property with at least one element: ", constraint);
+        return false;
+    }
+    if (propValueIsNullOrUndefined(propValue)) {
+        return constraint.days.includes("null");
+    }
+
+    let propAsDate = new Date(propValue);
+    if (typeof propValue !== 'string' || !(propAsDate instanceof Date) || isNaN(propAsDate)) {
+        console.error("The property value is not a valid ISO date string: ", propValue)
+        return false;
+    }
+    const weekdays = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
+    const propAsDateWeekday = weekdays[propAsDate.getDay()]; // 0=Sunday
+    console.debug("propAsDateWeekday: ", propAsDateWeekday);
+
+    const match = constraint.days.filter(day => day === propAsDateWeekday).length !== 0;
+    console.debug("weekdayConstraintIsMet: ", constraint, propAsDate.toISOString(), propAsDateWeekday, " included? ", match);
+    return match;
 }
 
 function propValueIsNullOrUndefined(propValue) {

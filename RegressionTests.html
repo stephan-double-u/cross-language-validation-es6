@@ -11,7 +11,7 @@
     </style>
 </head>
 <body>
-<div id="console"></div>
+<div id="consoleDiv"></div>
 <script type="module">
 import {setValidationRules, setDefaultMandatoryMessagePrefix, getDefaultMandatoryMessagePrefix,
     setDefaultImmutableMessagePrefix, getDefaultImmutableMessagePrefix, setDefaultContentMessagePrefix,
@@ -20,11 +20,12 @@ import {setValidationRules, setDefaultMandatoryMessagePrefix, getDefaultMandator
     validateMandatoryRules, validateMandatoryPropertyRules, validateImmutableRules, validateImmutablePropertyRules,
     validateContentRules, validateContentPropertyRules, validateUpdateRules, validateUpdatePropertyRules}
     from './CrossLanguageValidation_ES6.js';
-import {sizeConstraintIsMet, rangeConstraintIsMet, dateConstraintIsMet, equalsConstraintIsMet, equalsRefConstraintIsMet,
-    regexConstraintIsMet, inflatePropertyIfMultiIndexed} from './CrossLanguageValidation_ES6.js';
+import {sizeConstraintIsMet, rangeConstraintIsMet, dateConstraintIsMet, weekdayConstraintIsMet, equalsConstraintIsMet,
+    equalsRefConstraintIsMet, regexConstraintIsMet, inflatePropertyIfMultiIndexed}
+    from './CrossLanguageValidation_ES6.js';
 import {testValidationRules, sometypeObject} from './RegressionTestsData_ES6.js';
 
-const console = document.getElementById("console");
+const consoleDiv = document.getElementById("consoleDiv");
 
 let okCount = 0, errorCount = 0;
 
@@ -32,7 +33,7 @@ function log(text, cssClass = "info") {
     const para = document.createElement("P");
     para.setAttribute("class", cssClass)
     para.appendChild(document.createTextNode(text));
-    console.appendChild(para);
+    consoleDiv.appendChild(para);
 }
 
 function logResult() {
@@ -43,7 +44,7 @@ function logResult() {
     } else {
         para.setAttribute("class", 'info')
     }
-    console.prepend(para);
+    consoleDiv.prepend(para);
 }
 
 function assert(msg, expected, compare) {
@@ -52,7 +53,7 @@ function assert(msg, expected, compare) {
         compare = compare.toString();
     }
     if (expected !== compare) {
-        log('Assertion failure: ' +  msg + '. Expected "' + expected + '", but got "' + compare + '"', 'err');
+        log('Assertion failure: ' +  msg + ' - Expected "' + expected + '", but got "' + compare + '"', 'err');
         errorCount += 1;
     } else {
         log('Test o.k.: ' +  msg, 'ok');
@@ -171,6 +172,11 @@ assert('stringArray SIZE to small',
 assert('stringArray SIZE to big',
     ["error.validation.content.size.sometype.stringArray"],
     validateContentPropertyRules("sometype", "stringArray", {"stringArray": [1, 2, 3, 4]}));
+assert('otherDate is SATURDAY',
+    [], validateContentPropertyRules("sometype", "otherDate", {"otherDate": "2022-1-1"}));
+assert('otherDate is not SATURDAY',
+    ["error.validation.content.weekday_any.sometype.otherDate"],
+    validateContentPropertyRules("sometype", "otherDate", {"otherDate": "2022-1-2"}));
 
 assert('integerArray[*]#sum equals 6',
     [], validateContentPropertyRules("sometype", "integerArray[*]#sum", {"integerArray": [1, 2, 3]}, ["aaa"]));
@@ -342,26 +348,78 @@ assert('Number is > max',
 
 
 log(">>> Testing dateConstraintIsMet");
+const currentYear = new Date().getFullYear();
+const currentMonth = new Date().getMonth();
+const currentDate = new Date().getDate();
+
 assert('False if property is null',
-    false, dateConstraintIsMet({"type": "DATE_FUTURE", "days": 0}, null));
+    false, dateConstraintIsMet({"type": "FUTURE_DAYS", "min": 0}, null));
 assert('False if property is undefined',
-    false, dateConstraintIsMet({"type": "DATE_FUTURE", "days": 0}, undefined));
-assert('Property "days" is missing',
-    false, dateConstraintIsMet({"type": "DATE_FUTURE"}, "3000-01-31"));
-assert('FUTURE 0 against today',
-    true, dateConstraintIsMet({"type": "DATE_FUTURE", "days": 0}, new Date().toISOString()));
-assert('PAST 0 against now',
-    true, dateConstraintIsMet({"type": "DATE_PAST", "days": 0}, new Date().toISOString()));
-assert('FUTURE 1 against today',
-    false, dateConstraintIsMet({"type": "DATE_FUTURE", "days": 1}, new Date().toISOString()));
-assert('PAST 1 against today',
-    false, dateConstraintIsMet({"type": "DATE_PAST", "days": 1}, new Date().toISOString()));
-assert('FUTURE 1 against year 3000',
-    true, dateConstraintIsMet({"type": "DATE_FUTURE", "days": 1}, "3000-01-31"));
-assert('PAST 1 against year 2000',
-    true, dateConstraintIsMet({"type": "DATE_PAST", "days": 1}, "2020-01-01"));
-assert('PAST 10000 against year 2020',
-    false, dateConstraintIsMet({"type": "DATE_PAST", "days": 10000}, "2020-01-01"));
+    false, dateConstraintIsMet({"type": "FUTURE_DAYS", "min": 0}, undefined));
+assert('Property "min" and "max" are missing',
+    false, dateConstraintIsMet({"type": "FUTURE_DAYS"}, "3000-01-31"));
+
+assert('FUTURE min 0 against now',
+    true, dateConstraintIsMet({"type": "FUTURE_DAYS", "min": 0}, new Date().toISOString()));
+assert('FUTURE min/max 0 against now',
+    true, dateConstraintIsMet({"type": "FUTURE_DAYS", "min": 0, "max": 0}, new Date().toISOString()));
+assert('FUTURE min 1 against today',
+    false, dateConstraintIsMet({"type": "FUTURE_DAYS", "min": 1}, new Date().toISOString()));
+assert('FUTURE min 1 against year 3000',
+    true, dateConstraintIsMet({"type": "FUTURE_DAYS", "min": 1}, "3000-01-31"));
+assert('FUTURE min 1 max 365000 against year 3000',
+    true, dateConstraintIsMet({"type": "FUTURE_DAYS", "min": 1, "max": 365000}, "3000-01-31"));
+assert('FUTURE min 1 max 1000 against year 3000',
+    false, dateConstraintIsMet({"type": "FUTURE_DAYS", "min": 1, "max": 1000}, "3000-01-31"));
+
+assert('PAST min 0 against now',
+    true, dateConstraintIsMet({"type": "PAST_DAYS", "min": 0}, new Date().toISOString()));
+assert('PAST min/max 0 against now',
+    true, dateConstraintIsMet({"type": "PAST_DAYS", "min": 0, "max": 0}, new Date().toISOString()));
+assert('PAST min 1 against today',
+    false, dateConstraintIsMet({"type": "PAST_DAYS", "min": 1}, new Date().toISOString()));
+assert('PAST min 1 against year 2000',
+    true, dateConstraintIsMet({"type": "PAST_DAYS", "min": 1}, "2020-01-01"));
+assert('PAST min 10000 against year 2020',
+    false, dateConstraintIsMet({"type": "PAST_DAYS", "min": 10000}, "2020-01-01"));
+assert('PAST min 1 max 10000 against year 2020',
+    true, dateConstraintIsMet({"type": "PAST_DAYS", "min": 1, "max": 10000}, "2020-01-01"));
+assert('PAST min 1 max 1000 against year 2000',
+    false, dateConstraintIsMet({"type": "PAST_DAYS", "min": 1, "max": 1000}, "2000-01-01"));
+
+assert('PERIOD min 0 against now',
+    true, dateConstraintIsMet({"type": "PERIOD_DAYS", "min": 0}, new Date().toISOString()));
+assert('PERIOD max 0 against now',
+    true, dateConstraintIsMet({"type": "PERIOD_DAYS", "max": 0}, new Date().toISOString()));
+assert('PERIOD min -365 max 365 against now - 365 days',
+    true, dateConstraintIsMet({"type": "PAST_DAYS", "min": -365, "max": 365},
+        new Date(currentYear-1, currentMonth, currentDate).toISOString()));
+assert('PERIOD min -365 max 365 against now + 365 days',
+    true, dateConstraintIsMet({"type": "PAST_DAYS", "min": -365, "max": 365},
+        new Date(currentYear+1, currentMonth, currentDate).toISOString()));
+assert('PERIOD min -365 max 365 against now - 2 years',
+    false, dateConstraintIsMet({"type": "PAST_DAYS", "min": -365, "max": 365},
+        new Date(currentYear-2, currentMonth, currentDate).toISOString()));
+assert('PERIOD min -365 max 365 against now + 2 years',
+    false, dateConstraintIsMet({"type": "PAST_DAYS", "min": -365, "max": 365},
+        new Date(currentYear+2, currentMonth, currentDate).toISOString()));
+
+
+log(">>> Testing weekdayConstraintIsMet");
+assert('False if WEEKDAY_ANY days is missing',
+    false, weekdayConstraintIsMet({"type": "WEEKDAY_ANY"}, '2022-01-01'));
+assert('False if WEEKDAY_ANY days is not an array',
+    false, weekdayConstraintIsMet({"type": "WEEKDAY_ANY", "days": {}}, '2022-01-01'));
+assert('False if WEEKDAY_ANY days is empty',
+    false, weekdayConstraintIsMet({"type": "WEEKDAY_ANY", "days": []}, '2022-01-01'));
+assert('False if WEEKDAY_ANY days do not match',
+    false, weekdayConstraintIsMet({"type": "WEEKDAY_ANY", "days": ["MONDAY"]}, '2022-01-01'));
+assert('False if WEEKDAY_ANY days do not contain "null"',
+    false, weekdayConstraintIsMet({"type": "WEEKDAY_ANY", "days": ["MONDAY"]}, null));
+assert('True if WEEKDAY_ANY days contain "null"',
+    true, weekdayConstraintIsMet({"type": "WEEKDAY_ANY", "days": ["MONDAY", "null"]}, null));
+assert('True if WEEKDAY_ANY days do match',
+    true, weekdayConstraintIsMet({"type": "WEEKDAY_ANY", "days": ["SATURDAY"]}, '2022-01-01'));
 
 
 log(">>> Testing inflatePropertyIfMultiIndexed");
@@ -375,8 +433,8 @@ assert('list-index is inflated correct',
     ["a[1]","a[4]"], inflatePropertyIfMultiIndexed("a[1,4]", {a:[0,0,0,0,0]}));
 assert('combined-index is inflated correct',
     ["a[0].b[0].c[2].d","a[1].b[0].c[2].d","a[1].b[1].c[2].d"],
-    //TODO should ".c[2].d" deliver this result or an empty array like it is for ".c[*].d
     inflatePropertyIfMultiIndexed("a[*].b[0/1].c[2].d", {a:[{b:[0]},{b:[0,0]}]}));
+
 
 log(">>> Testing set/getDefault*MessagePrefix");
 setDefaultMandatoryMessagePrefix("foo");

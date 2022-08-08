@@ -175,7 +175,7 @@ export function validateMandatoryPropertyRules(typeName, property, object, userP
  */
 export function isPropertyMandatory(typeName, property, object, userPerms) {
     const matchingRules = getMatchingMandatoryPropertyRules(typeName, property, object, userPerms);
-    return matchingRules !== undefined;
+    return matchingRules !== undefined && matchingRules.length > 0;
 }
 
 function getMatchingMandatoryPropertyRules(typeName, property, object, userPerms) {

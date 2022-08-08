@@ -66,8 +66,8 @@ setValidationRules(testValidationRules);
 log(">>> Testing getAllowedPropertyValues");
 assert('undefined allowed properties if no EQUALS_ANY* constraint exist',
     undefined, getAllowedPropertyValues("sometype", "number1", {"number1": 1}));
-assert('allowed properties if EQUALS_ANY content constraint exist',
-    ["one", "two"], getAllowedPropertyValues("sometype", "someString", {"notRelevant": 1}, ["aaa"]));
+assert('allowed properties if (nullable) EQUALS_ANY content constraint exist',
+    ["one", "two", null], getAllowedPropertyValues("sometype", "someString", {"notRelevant": 1}, ["aaa"]));
 assert('allowed properties if EQUALS_ANY_REF content constraint exist',
     ["one", "two", "four", "six"], getAllowedPropertyValues("sometype", "someString",
         {"stringArray": ["one", "two"], "stringArray2": ["three", "four", "five", "six", "seven"]}, ["bbb"]));

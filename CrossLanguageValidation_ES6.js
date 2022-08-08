@@ -1,4 +1,4 @@
-const SCHEMA_VERSION = "0.6";
+const SCHEMA_VERSION = "0.7";
 
 const emptyValidationRules = {
     schemaVersion: SCHEMA_VERSION,
@@ -40,6 +40,7 @@ export function getDefaultMandatoryMessagePrefix() {
 }
 
 export function setDefaultMandatoryMessagePrefix(prefix) {
+    console.info("set DefaultMandatoryMessagePrefix to ", prefix);
     defaultMandatoryMessagePrefix = prefix;
 }
 
@@ -48,6 +49,7 @@ export function getDefaultImmutableMessagePrefix() {
 }
 
 export function setDefaultImmutableMessagePrefix(prefix) {
+    console.info("set DefaultImmutableMessagePrefix to ", prefix);
     defaultImmutableMessagePrefix = prefix;
 }
 
@@ -56,6 +58,7 @@ export function getDefaultContentMessagePrefix() {
 }
 
 export function setDefaultContentMessagePrefix(prefix) {
+    console.info("set DefaultContentMessagePrefix to ", prefix);
     defaultContentMessagePrefix = prefix;
 }
 
@@ -64,6 +67,7 @@ export function getDefaultUpdateMessagePrefix() {
 }
 
 export function setDefaultUpdateMessagePrefix(prefix) {
+    console.info("set DefaultUpdateMessagePrefix to ", prefix);
     defaultUpdateMessagePrefix = prefix;
 }
 
@@ -94,21 +98,30 @@ function getAllowedPropertyValuesForRule(rules, object) {
     if (rules === undefined || !Array.isArray(rules)) {
         return undefined;
     }
-    for (const rule of rules) {
-        if (rule.constraint !== undefined && rule.constraint.type !== undefined) {
-            const constraint = rule.constraint;
-            if (constraint.type === "EQUALS_ANY") {
-                return constraint.values;
-            } else if (constraint.type === "EQUALS_ANY_REF") {
-                const allValues = [];
-                for (const refProp of constraint.values) {
-                    allValues.push(...getPropertyValues(refProp, object));
-                }
-                return allValues;
-            }
+    const equalsRule = rules
+        .find(rule => isConstraintOfAnyType(rule.constraint, "EQUALS_ANY", "EQUALS_ANY_REF"));
+    if (equalsRule === undefined) {
+        return undefined;
+    }
+    const constraint = equalsRule.constraint;
+    const allValues = [];
+    if (constraint.type === "EQUALS_ANY") {
+        allValues.push(...constraint.values);
+    } else {
+        for (const refProp of constraint.values) {
+            allValues.push(...getPropertyValues(refProp, object));
         }
     }
-    return undefined;
+    if (constraint.nullEqualsTo === true) {
+        allValues.push(null);
+    }
+    return allValues;
+}
+
+function isConstraintOfAnyType(constraint, ...constraintTypes) {
+    return constraint !== undefined
+        && constraint.type !== undefined
+        && constraintTypes.includes(constraint.type);
 }
 
 /**
@@ -222,7 +235,6 @@ function propertyValuesEquals(property, originalObject, modifiedObject) {
     for (let propertyToCheck of propertiesToCheck) {
         let originalValue = getPropertyValue(propertyToCheck, originalObject);
         let modifiedValue = getPropertyValue(propertyToCheck, modifiedObject);
-        console.debug("Property, original value, modified", propertyToCheck, originalValue, modifiedValue);
         if (originalValue !== modifiedValue) {
             return false;
         }
@@ -368,8 +380,6 @@ function arePermissionsMatching(conditionPerms, userPerms) {
         return false;
     }
     let matchingPerms = userPerms.filter(value => conditionPerms.values.includes(value));
-    console.debug("arePermissionsMatching for type?: ", conditionPerms.type, conditionPerms.values, "intersect",
-        userPerms, "?", matchingPerms)
     switch (conditionPerms?.type) {
         case 'ALL':
             return matchingPerms.length === userPerms.length;
@@ -398,13 +408,13 @@ function getConditionsTopGroup(propertyRule) {
         topGroupToReturn.conditionsGroups[0].conditions[0] = condition;
         if (conditionsGroup !== undefined || conditionsTopGroup !== undefined) {
             console.warn("Property rule should contain 'condition' xor 'conditionsGroup' xor " +
-                "'conditionsTopGroup'. Property 'condition' takes precedence", propertyRule)
+                "'conditionsTopGroup'. Property 'condition' takes precedence", propertyRule);
         }
     } else if (conditionsGroup !== undefined) {
         topGroupToReturn.conditionsGroups[0] = conditionsGroup;
         if (conditionsTopGroup !== undefined) {
             console.warn("Property rule should contain 'conditionsGroup' xor " +
-                "'conditionsTopGroup'. Property 'conditionsGroup' takes precedence", propertyRule)
+                "'conditionsTopGroup'. Property 'conditionsGroup' takes precedence", propertyRule);
         }
     } else if (conditionsTopGroup !== undefined) {
         topGroupToReturn = conditionsTopGroup;
@@ -424,7 +434,6 @@ function allConditionsAreMet(conditionsTopGroup, object) {
     let operator = conditionsTopGroup.operator;
     for (const subGroup of conditionsTopGroup.conditionsGroups) {
         let conditionsAreMet = groupConditionsAreMet(subGroup, object);
-        console.debug("allConditionsAreMet?: ", subGroup.operator, "groupConditionsAreMet:", conditionsAreMet)
         if (conditionsAreMet) {
             if (operator === "OR") {
                 return true;
@@ -496,10 +505,10 @@ function getPropertyValues(property, object) {
     }
     switch (aggregateFunction) {
         case "sum":
-            const summation = sumUpPropertyValues(object, propertyValues);
+            const summation = summedUpPropertyValues(propertyValues);
             return [summation];
         case "distinct":
-            const valuesAreDistinct = distinctCheckForPropertyValues(object, propertyValues);
+            const valuesAreDistinct = distinctCheckForPropertyValues(propertyValues);
             return [valuesAreDistinct];
         default:
             console.error("Should not happen. Unsupported: %s", aggregateFunction);
@@ -507,21 +516,46 @@ function getPropertyValues(property, object) {
     }
 }
 
-function sumUpPropertyValues(object, propertyValues) {
+function summedUpPropertyValues(propertyValues) {
     const sum = propertyValues.reduce((partialSum, a) => partialSum + a, 0);
-    console.debug("sumUpPropertyValues: %s", sum)
+    console.debug("summedUpPropertyValues: ", propertyValues, sum);
     return sum;
 }
 
-//TODO Support for JSON objects? e.g. JSON.stringify(obj1) === JSON.stringify(obj2)
-function distinctCheckForPropertyValues(object, propertyValues) {
+function distinctCheckForPropertyValues(propertyValues) {
     const distinctValues = [...new Set(propertyValues)];
     const distinct = propertyValues.length === distinctValues.length;
-    console.debug("distinctCheckForPropertyValues: %s", distinct)
+    console.debug("distinctCheckForPropertyValues: ", propertyValues, distinct);
     return distinct;
 }
 
+
 function constraintIsValid(constraint, propValue, object) {
+    if (propValue === null && isConstraintOfAnyType(constraint, 'EQUALS_ANY', 'EQUALS_NONE',
+        'EQUALS_ANY_REF', 'EQUALS_NONE_REF', 'WEEKDAY_ANY')) {
+        return validateNullValueAgainstNullEqualsToValue(constraint)
+    } else {
+        return validateContraint(constraint, propValue, object);
+    }
+}
+
+function validateNullValueAgainstNullEqualsToValue(constraint) {
+    const nullEqualsTo = constraint.nullEqualsTo;
+    switch (constraint.type) {
+        case 'EQUALS_ANY':
+        case 'EQUALS_ANY_REF':
+        case 'WEEKDAY_ANY':
+            return nullEqualsTo !== undefined && nullEqualsTo === true;
+        case 'EQUALS_NONE':
+        case 'EQUALS_NONE_REF':
+            return nullEqualsTo === undefined || nullEqualsTo === true;
+        default:
+            console.error("Constraint type not supported (yet): ", constraint.type)
+    }
+    return false;
+}
+
+function validateContraint(constraint, propValue, object) {
     let isMet = false;
     switch (constraint.type) {
         case 'EQUALS_ANY':
@@ -554,7 +588,6 @@ function constraintIsValid(constraint, propValue, object) {
         default:
             console.error("Constraint type not supported (yet): ", constraint.type)
     }
-    //console.debug("constraint:", constraint, "->", isMet)
     return isMet;
 }
 
@@ -570,7 +603,6 @@ function getPropertyValue(propertyName, object) {
         // split up propertyPart into name and optional index, e.g. 'article[0]' into 'article and 0
         let propertyPartName = propertyPart.split("[")[0];
         propertyValue = propertyValue[propertyPartName];
-        console.debug("propertyPartName: %s, propertyValue: %s", propertyPartName, propertyValue)
         if (propertyValue === null) {
             return null;
         }
@@ -578,7 +610,6 @@ function getPropertyValue(propertyName, object) {
             let index = /\[(\d+)]/.exec(propertyPart)[1];
             if (Array.isArray(propertyValue)) {
                 if (propertyValue.length > index) {
-                    console.debug("propertyValue[%d]: %s", index, propertyValue[index]);
                     propertyValue = propertyValue[index];
                 } else {
                     console.error("Indexed property is not an array:", propertyValue);
@@ -851,7 +882,6 @@ export function weekdayConstraintIsMet(constraint, propValue) {
     }
     const weekdays = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
     const propAsDateWeekday = weekdays[propAsDate.getDay()]; // 0=Sunday
-    console.debug("propAsDateWeekday: ", propAsDateWeekday);
 
     const match = constraint.days.filter(day => day === propAsDateWeekday).length !== 0;
     console.debug("weekdayConstraintIsMet: ", constraint, propAsDate.toISOString(), propAsDateWeekday, " included? ", match);

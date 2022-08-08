@@ -211,7 +211,7 @@ export function validateImmutablePropertyRules(typeName, property, originalObjec
 
 export function isPropertyImmutable(typeName, property, object, userPerms) {
     const matchingRules = getMatchingImmutablePropertyRules(typeName, property, object, userPerms);
-    return matchingRules !== undefined;
+    return matchingRules !== undefined && matchingRules.length > 0;
 }
 
 function getMatchingImmutablePropertyRules(typeName, property, object, userPerms) {

@@ -272,6 +272,15 @@ assert('Number REGEX_ANY match',
 assert('Number not REGEX_ANY match',
     false, regexConstraintIsMet({"type": "REGEX_ANY", "values": ["nomatch"]}, 1234567));
 
+assert('String REGEX_NONE match',
+    false, regexConstraintIsMet({"type": "REGEX_NONE", "values": ["nomatch", "^[fz]o{2}$"]}, "zoo"));
+assert('String none REGEX_NONE match',
+    true, regexConstraintIsMet({"type": "REGEX_NONE", "values": ["nomatch"]}, "zoo"));
+assert('Number REGEX_NONE match',
+    false, regexConstraintIsMet({"type": "REGEX_NONE", "values": ["nomatch", "^[0-7]+$"]}, 1234567));
+assert('Number none REGEX_NONE match',
+    true, regexConstraintIsMet({"type": "REGEX_NONE", "values": ["nomatch"]}, 1234567));
+
 
 log(">>> Testing sizeConstraintIsMet");
 assert('Property is null',

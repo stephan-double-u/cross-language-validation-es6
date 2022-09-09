@@ -1,4 +1,4 @@
-const SCHEMA_VERSION = "0.7";
+const SCHEMA_VERSION = "0.8";
 
 const emptyValidationRules = {
     schemaVersion: SCHEMA_VERSION,
@@ -569,6 +569,7 @@ function validateContraint(constraint, propValue, object) {
             isMet = equalsRefConstraintIsMet(constraint, propValue, object);
             break;
         case 'REGEX_ANY':
+        case 'REGEX_NONE':
             isMet =  regexConstraintIsMet(constraint, propValue);
             break;
         case 'SIZE':
@@ -658,7 +659,7 @@ export function equalsConstraintIsMet(constraint, propValue) {
 }
 
 /**
- * Validates EQUALS_ANY_REF-REF and EQUALS_NONE_REF constraint.
+ * Validates EQUALS_ANY_REF and EQUALS_NONE_REF constraint.
  */
 export function equalsRefConstraintIsMet(constraint, propValue, object) {
     switch (constraint.type) {
@@ -701,23 +702,25 @@ function singleRefPropertyMatch(refProp, propValue, object) {
 }
 
 /**
- * Validates REGEX_ANY constraint.
+ * Validates REGEX_ANY and REGEX_NONE constraint.
  */
 export function regexConstraintIsMet(constraint, propValue) {
-    if (constraint.type !== 'REGEX_ANY') {
-        console.error("Unknown regex constraint type: ", constraint.type)
-        return false;
+    switch (constraint.type) {
+        case 'REGEX_ANY':
+        case 'REGEX_NONE':
+            if (propValueIsNullOrUndefined(propValue)) {
+                return false;
+            }
+            for (const regexString of constraint.values) {
+                const regex = new RegExp(regexString, "u");
+                if (("" + propValue).match(regex)) {
+                    return constraint.type === 'REGEX_ANY';
+                }
+            }
+            return constraint.type === 'REGEX_NONE';
+        default:
+            console.error("Unknown regex constraint type: ", constraint.type)
     }
-    if (propValueIsNullOrUndefined(propValue)) {
-        return false;
-    }
-    for (const regexString of constraint.values) {
-        const regex = new RegExp(regexString, "u");
-        if (("" + propValue).match(regex)) {
-            return true;
-        }
-    }
-    return false;
 }
 
 /**

@@ -262,6 +262,12 @@ export const testValidationRules = {
                         "values": [
                             false
                         ]
+                    },
+                    "permissions": {
+                        "type": "NONE",
+                        "values": [
+                            "aaa"
+                        ]
                     }
                 }
             ],
@@ -286,6 +292,12 @@ export const testValidationRules = {
                         "values": [
                             false
                         ]
+                    },
+                    "permissions": {
+                        "type": "NONE",
+                        "values": [
+                            "aaa"
+                        ]
                     }
                 }
             ]
@@ -300,6 +312,12 @@ export const testValidationRules = {
                         "values": [
                             "foo",
                             "bar"
+                        ]
+                    },
+                    "permissions": {
+                        "type": "NONE",
+                        "values": [
+                            "aaa"
                         ]
                     },
                     "condition": {

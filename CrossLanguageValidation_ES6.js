@@ -1,4 +1,4 @@
-const SCHEMA_VERSION = "0.8";
+const SCHEMA_VERSION = "0.9";
 
 const emptyValidationRules = {
     schemaVersion: SCHEMA_VERSION,
@@ -108,9 +108,7 @@ function getAllowedPropertyValuesForRule(rules, object) {
     if (constraint.type === "EQUALS_ANY") {
         allValues.push(...constraint.values);
     } else {
-        for (const refProp of constraint.values) {
-            allValues.push(...getPropertyValues(refProp, object));
-        }
+        allValues.push(...getAllPropertyValues(constraint.values, object));
     }
     if (constraint.nullEqualsTo === true) {
         allValues.push(null);
@@ -122,6 +120,14 @@ function isConstraintOfAnyType(constraint, ...constraintTypes) {
     return constraint !== undefined
         && constraint.type !== undefined
         && constraintTypes.includes(constraint.type);
+}
+
+function getAllPropertyValues(refProps, object) {
+    const allValues = [];
+    for (const refProp of refProps) {
+        allValues.push(...getPropertyValues(refProp, object));
+    }
+    return allValues;
 }
 
 /**
@@ -469,24 +475,28 @@ function groupConditionsAreMet(conditionsSubGroup, object) {
  */
 function conditionIsMet(condition, object) {
     const propertyValues = getPropertyValues(condition.property, object)
-    const aggregateFunction = validateAndGetTerminalAggregateFunctionIfExist(condition.property);
-    if (aggregateFunction != null) {
-        const aggregatedValue = propertyValues[0];
-        return constraintIsValid(condition.constraint, aggregatedValue, object);
-    } else {
-        for (const propValue of propertyValues) {
-            if (propValue === undefined) {
-                console.warn("Condition ", condition, "propValue is undefined; return false");
-                return false;
-            }
-            if (!constraintIsValid(condition.constraint, propValue, object)) {
-                return false;
-            }
+    for (const propValue of propertyValues) {
+        if (propValue === undefined) {
+            console.warn("Condition ", condition, "propValue is undefined; return false");
+            return false;
+        }
+        if (!constraintIsValid(condition.constraint, propValue, object)) {
+            return false;
         }
     }
     return true;
 }
 
+/*
+ Returns an array with one or more property values.
+ For a simple property and for a property with a terminal aggregate function one value is returned.
+ For a property with an index definition the number of values returned depends on that index definition.
+ Epamples:
+ "foo", { foo: "bar"] } -> ["bar"]
+ "foo[0, 2]", { foo: ["a", "b", "c"] } -> ["a", "c"]
+ "foo[*]#sum", { foo: [1, 3, 5] } -> [9]
+ "foo[*]#distinct", { foo: [1, 3, 5] } -> [true]
+ */
 function getPropertyValues(property, object) {
     const aggregateFunction = validateAndGetTerminalAggregateFunctionIfExist(property);
     const pureProperty = property.split("#")[0];
@@ -521,10 +531,11 @@ function distinctCheckForPropertyValues(propertyValues) {
     return distinct;
 }
 
-
-function constraintIsValid(constraint, propValue, object) {
-    if (propValue === null && isConstraintOfAnyType(constraint, 'EQUALS_ANY', 'EQUALS_NONE',
-        'EQUALS_ANY_REF', 'EQUALS_NONE_REF', 'WEEKDAY_ANY')) {
+// export for easier testing
+export function constraintIsValid(constraint, propValue, object) {
+    if (propValue === null && isConstraintOfAnyType(constraint, 'EQUALS_ANY', 'EQUALS_ANY_REF',
+        'EQUALS_NONE', 'EQUALS_NONE_REF', 'WEEKDAY_ANY', 'QUARTER_ANY', 'QUARTER_ANY_REF',
+        'YEAR_ANY', 'YEAR_ANY_REF')) {
         return validateNullValueAgainstNullEqualsToValue(constraint)
     } else {
         return validateContraint(constraint, propValue, object);
@@ -534,17 +545,12 @@ function constraintIsValid(constraint, propValue, object) {
 function validateNullValueAgainstNullEqualsToValue(constraint) {
     const nullEqualsTo = constraint.nullEqualsTo;
     switch (constraint.type) {
-        case 'EQUALS_ANY':
-        case 'EQUALS_ANY_REF':
-        case 'WEEKDAY_ANY':
-            return nullEqualsTo !== undefined && nullEqualsTo === true;
         case 'EQUALS_NONE':
         case 'EQUALS_NONE_REF':
             return nullEqualsTo === undefined || nullEqualsTo === true;
         default:
-            console.error("Constraint type not supported (yet): ", constraint.type)
+            return nullEqualsTo !== undefined && nullEqualsTo === true;
     }
-    return false;
 }
 
 function validateContraint(constraint, propValue, object) {
@@ -577,6 +583,14 @@ function validateContraint(constraint, propValue, object) {
             break;
         case 'WEEKDAY_ANY':
             isMet =  weekdayConstraintIsMet(constraint, propValue);
+            break;
+        case 'QUARTER_ANY':
+        case 'QUARTER_ANY_REF':
+            isMet =  quarterConstraintIsMet(constraint, propValue, object);
+            break;
+        case 'YEAR_ANY':
+        case 'YEAR_ANY_REF':
+            isMet =  yearConstraintIsMet(constraint, propValue, object);
             break;
         default:
             console.error("Constraint type not supported (yet): ", constraint.type)
@@ -624,8 +638,8 @@ export function equalsConstraintIsMet(constraint, propValue) {
     switch (constraint.type) {
         case 'EQUALS_ANY':
         case 'EQUALS_NONE':
-            let propAsDate = new Date(propValue);
-            if (typeof propValue === 'string' && propAsDate instanceof Date && !isNaN(propAsDate)) {
+            const propAsDate = getStringAsValidDateOrUndefined(propValue);
+            if (propAsDate !== undefined) {
                 let matchLength =  constraint.values.map(v => new Date(v))
                     .filter(valueAsDate => +valueAsDate === +propAsDate).length;
                 if (constraint.type === 'EQUALS_ANY') {
@@ -657,13 +671,8 @@ export function equalsRefConstraintIsMet(constraint, propValue, object) {
     switch (constraint.type) {
         case 'EQUALS_ANY_REF':
         case 'EQUALS_NONE_REF':
-            if (propValueIsNullOrUndefined(propValue)) {
-                return (constraint.type === 'EQUALS_NONE_REF');
-            }
-            for (const refProp of constraint.values) {
-                if (singleRefPropertyMatch(refProp, propValue, object)) {
-                    return constraint.type === 'EQUALS_ANY_REF';
-                }
+            if (equalsRefPropertyMatch(constraint.values, propValue, object)) {
+                return constraint.type === 'EQUALS_ANY_REF';
             }
             return constraint.type === 'EQUALS_NONE_REF';
         default:
@@ -672,24 +681,18 @@ export function equalsRefConstraintIsMet(constraint, propValue, object) {
     return false;
 }
 
-function singleRefPropertyMatch(refProp, propValue, object) {
-    const refValues = getPropertyValues(refProp, object)
-    const aggregateFunction = validateAndGetTerminalAggregateFunctionIfExist(refProp);
+function equalsRefPropertyMatch(refProps, propValue, object) {
+    const refValues = getAllPropertyValues(refProps, object)
     let equals = false;
-    if (aggregateFunction != null) {
-        const aggregatedValue = refValues[0];
-        equals = aggregatedValue === propValue;
+    const propAsDate = getStringAsValidDateOrUndefined(propValue);
+    if (propAsDate !== undefined) {
+        const matchLength =  refValues.map(v => new Date(v))
+            .filter(valueAsDate => +valueAsDate === +propAsDate).length;
+        equals = matchLength > 0;
     } else {
-        const propAsDate = new Date(propValue);
-        if (typeof propValue === 'string' && propAsDate instanceof Date && !isNaN(propAsDate)) {
-            const matchLength =  refValues.map(v => new Date(v))
-                .filter(valueAsDate => +valueAsDate === +propAsDate).length;
-            equals = matchLength > 0;
-        } else {
-            equals = refValues.indexOf(propValue) !== -1;
-        }
+        equals = refValues.indexOf(propValue) !== -1;
     }
-    console.debug("" + propValue + (equals ? " " : " NOT ") + "equals referenced property " + refProp);
+    console.debug("" + propValue + (equals ? " " : " NOT ") + "equals referenced properties " + refProps);
     return equals;
 }
 
@@ -760,8 +763,8 @@ export function rangeConstraintIsMet(constraint, propValue) {
     if (typeof propValue === "number" || typeof propValue === "bigint") {
         return rangeOfNumbersMeetsValue(constraint, propValue);
     }
-    let propAsDate = new Date(propValue);
-    if (typeof propValue === 'string' && propAsDate instanceof Date && !isNaN(propAsDate)) {
+    const propAsDate = getStringAsValidDateOrUndefined(propValue);
+    if (propAsDate !== undefined) {
         return rangeOfDatesMeetsValue(constraint, propAsDate);
     }
     console.error("Unsupported type of range constraint value:", typeof propValue)
@@ -825,9 +828,8 @@ export function dateConstraintIsMet(constraint, propValue) {
         return false;
     }
 
-    let propAsDate = new Date(propValue);
-    if (typeof propValue !== 'string' || !(propAsDate instanceof Date) || isNaN(propAsDate)) {
-        console.error("The property value is not a valid ISO date string: ", propValue)
+    let propAsDate = getStringAsValidDateOrUndefined(propValue, true);
+    if (propAsDate === undefined) {
         return false;
     }
     propAsDate = stripOffTime(propAsDate);
@@ -861,26 +863,96 @@ export function dateConstraintIsMet(constraint, propValue) {
 /**
  * Validates WEEKDAY_ANY constraint.
  */
-export function weekdayConstraintIsMet(constraint, propValue) {
-    if (constraint.days === undefined || !Array.isArray(constraint.days) || constraint.days.length === 0) {
-        console.error("WEEKDAY_ANY constraint is missing 'days' array property with at least one element: ", constraint);
+function weekdayConstraintIsMet(constraint, propValue) {
+    const values = constraint.values;
+    if (!isNonEmptyArray(values)) {
+        console.error("Constraint is missing 'values' array property with at least one element: ", constraint);
         return false;
     }
-    if (propValueIsNullOrUndefined(propValue)) {
-        return constraint.days.includes("null");
-    }
 
-    let propAsDate = new Date(propValue);
-    if (typeof propValue !== 'string' || !(propAsDate instanceof Date) || isNaN(propAsDate)) {
-        console.error("The property value is not a valid ISO date string: ", propValue)
+    const propAsDate = getStringAsValidDateOrUndefined(propValue, true);
+    if (propAsDate === undefined) {
         return false;
     }
     const weekdays = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
     const propAsDateWeekday = weekdays[propAsDate.getDay()]; // 0=Sunday
 
-    const match = constraint.days.filter(day => day === propAsDateWeekday).length !== 0;
+    const match = values.filter(day => day === propAsDateWeekday).length !== 0;
     console.debug("weekdayConstraintIsMet: ", constraint, propAsDate.toISOString(), propAsDateWeekday, " included? ", match);
     return match;
+}
+
+/**
+ * Validates QUARTER_ANY and QUARTER_ANY_REF constraint.
+ */
+function quarterConstraintIsMet(constraint, propValue, object) {
+    let values = constraint.values;
+    if (!isNonEmptyArray(values)) {
+        console.error("Constraint is missing 'values' array property with at least one element: ", constraint);
+        return false;
+    }
+
+    const propAsDate = getStringAsValidDateOrUndefined(propValue, true);
+    if (propAsDate === undefined) {
+        return false;
+    }
+    const dateQuarter = Math.floor(propAsDate.getMonth() / 3 + 1);
+
+    switch (constraint.type) {
+        case 'QUARTER_ANY':
+            break;
+        case 'QUARTER_ANY_REF':
+            values = getAllPropertyValues(values, object);
+            break;
+        default:
+            console.error("Constraint type not supported (yet): ", constraint.type);
+            return false;
+    }
+    return values.filter(quarter => quarter === dateQuarter).length !== 0;
+}
+
+/**
+ * Validates YEAR_ANY and YEAR_ANY_REF constraint.
+ */
+function yearConstraintIsMet(constraint, propValue, object) {
+    let values = constraint.values;
+    if (!isNonEmptyArray(values)) {
+        console.error("Constraint is missing 'values' array property with at least one element: ", constraint);
+        return false;
+    }
+
+    const propAsDate = getStringAsValidDateOrUndefined(propValue, true);
+    if (propAsDate === undefined) {
+        return false;
+    }
+    const dateYear = propAsDate.getFullYear();
+
+    switch (constraint.type) {
+        case 'YEAR_ANY':
+            break;
+        case 'YEAR_ANY_REF':
+            values = getAllPropertyValues(values, object);
+            break;
+        default:
+            console.error("Constraint type not supported (yet): ", constraint.type);
+            return false;
+    }
+    return values.filter(year => year === dateYear).length !== 0;
+}
+
+function isNonEmptyArray(object) {
+    return object !== undefined && Array.isArray(object) && object.length > 0;
+}
+
+function getStringAsValidDateOrUndefined(value, logErrorIfInvalid) {
+    const valueAsDate = new Date(value);
+    if (typeof value === 'string' && (valueAsDate instanceof Date) && !isNaN(valueAsDate)) {
+        return valueAsDate;
+    }
+    if (logErrorIfInvalid === true) {
+        console.error("The value is not a valid date string: ", value)
+    }
+    return undefined;
 }
 
 function propValueIsNullOrUndefined(propValue) {
@@ -904,9 +976,11 @@ function stripOffTime(date) {
     return date;
 }
 
-// Inflate property with multi-index definition to properties with single-index definitions, e.g.
-// "a.b[0,1].c.d[2-3]" -> ["a.b[0].c.d[2]", "a.b[0].c.d[3]", "a.b[1].c.d[2]", "a.b[1].c.d[3]"]
 const INDEX_PARTS_REGEX = /^(.+)\[(\d+(,\d+)*|\d+\/\d+|\d+-\d+|\*)]$/;
+/*
+ Inflates property with multi-index definition to properties with single-index definitions, e.g.
+ "a.b[0,1].c.d[2-3]" -> ["a.b[0].c.d[2]", "a.b[0].c.d[3]", "a.b[1].c.d[2]", "a.b[1].c.d[3]"]
+ */
 export function inflatePropertyIfMultiIndexed(property, object) {
     if (property.indexOf("[") === -1) {
         return [property];

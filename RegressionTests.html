@@ -20,7 +20,7 @@ import {setValidationRules, setDefaultMandatoryMessagePrefix, getDefaultMandator
     validateMandatoryRules, validateMandatoryPropertyRules, validateImmutableRules, validateImmutablePropertyRules,
     validateContentRules, validateContentPropertyRules, validateUpdateRules, validateUpdatePropertyRules}
     from './CrossLanguageValidation_ES6.js';
-import {sizeConstraintIsMet, rangeConstraintIsMet, dateConstraintIsMet, weekdayConstraintIsMet, equalsConstraintIsMet,
+import {constraintIsValid, sizeConstraintIsMet, rangeConstraintIsMet, dateConstraintIsMet, equalsConstraintIsMet,
     equalsRefConstraintIsMet, regexConstraintIsMet, inflatePropertyIfMultiIndexed}
     from './CrossLanguageValidation_ES6.js';
 import {testValidationRules, sometypeObject} from './RegressionTestsData_ES6.js';
@@ -220,7 +220,7 @@ assert('String not EQUALS_NONE value',
     false, equalsConstraintIsMet({"type": "EQUALS_NONE" , "values": ["foo", "bar", "zoo"]}, "zoo"));
 assert('Date EQUALS_ANY value',
     true, equalsConstraintIsMet({"type": "EQUALS_ANY" , "values": ["1999-01-01T00:00:00Z", "2021-01-01T00:00:00Z"]},
-        "2021-01-01T00:00:00Z"));
+        "2021-01-01T00:00:00+00:00"));
 assert('Date not EQUALS_ANY value',
     false, equalsConstraintIsMet({"type": "EQUALS_ANY" , "values": ["1999-01-01T00:00:00Z", "2021-01-01T00:00:00Z"]},
         "3000-01-01T00:00:00Z"));
@@ -414,21 +414,103 @@ assert('PERIOD min -365 max 365 against now + 2 years',
         new Date(currentYear+2, currentMonth, currentDate).toISOString()));
 
 
-log(">>> Testing weekdayConstraintIsMet");
-assert('False if WEEKDAY_ANY days is missing',
-    false, weekdayConstraintIsMet({"type": "WEEKDAY_ANY"}, '2022-01-01'));
-assert('False if WEEKDAY_ANY days is not an array',
-    false, weekdayConstraintIsMet({"type": "WEEKDAY_ANY", "days": {}}, '2022-01-01'));
-assert('False if WEEKDAY_ANY days is empty',
-    false, weekdayConstraintIsMet({"type": "WEEKDAY_ANY", "days": []}, '2022-01-01'));
-assert('False if WEEKDAY_ANY days do not match',
-    false, weekdayConstraintIsMet({"type": "WEEKDAY_ANY", "days": ["MONDAY"]}, '2022-01-01'));
-assert('False if WEEKDAY_ANY days do not contain "null"',
-    false, weekdayConstraintIsMet({"type": "WEEKDAY_ANY", "days": ["MONDAY"]}, null));
-assert('True if WEEKDAY_ANY days contain "null"',
-    true, weekdayConstraintIsMet({"type": "WEEKDAY_ANY", "days": ["MONDAY", "null"]}, null));
-assert('True if WEEKDAY_ANY days do match',
-    true, weekdayConstraintIsMet({"type": "WEEKDAY_ANY", "days": ["SATURDAY"]}, '2022-01-01'));
+log(">>> Testing WEEKDAY_ANY constraints");
+assert('False if "values" is missing',
+    false, constraintIsValid({"type": "WEEKDAY_ANY"}, '2022-01-01'));
+assert('False if "values" is not an array',
+    false, constraintIsValid({"type": "WEEKDAY_ANY", "values": {}}, '2022-01-01'));
+assert('False if "values" is empty',
+    false, constraintIsValid({"type": "WEEKDAY_ANY", "values": []}, '2022-01-01'));
+assert('False if "values" do not match',
+    false, constraintIsValid({"type": "WEEKDAY_ANY", "values": ["MONDAY"]}, '2022-01-01'));
+assert('True if "values" do match',
+    true, constraintIsValid({"type": "WEEKDAY_ANY", "values": ["SATURDAY"]}, '2022-01-01'));
+assert('True if date is null and "nullEqualsTo" is true',
+    true, constraintIsValid({"type": "WEEKDAY_ANY", "nullEqualsTo": true}, null));
+assert('False if date is null and "nullEqualsTo" is false',
+    false, constraintIsValid({"type": "WEEKDAY_ANY", "nullEqualsTo": false}, null));
+assert('False if date is null and "nullEqualsTo" default',
+    false, constraintIsValid({"type": "WEEKDAY_ANY"}, null));
+
+
+log(">>> Testing QUARTER_ANY constraints");
+assert('False if "values" is missing',
+    false, constraintIsValid({"type": "QUARTER_ANY"}, '2022-01-01'));
+assert('False if "values" is not an array',
+    false, constraintIsValid({"type": "QUARTER_ANY", "values": {}}, '2022-01-01'));
+assert('False if "values" is empty',
+    false, constraintIsValid({"type": "QUARTER_ANY", "values": []}, '2022-01-01'));
+assert('True if "values" do match',
+    true, constraintIsValid({"type": "QUARTER_ANY", "values": [3, 1]}, '2022-01-01'));
+assert('False if "values" do not match',
+    false, constraintIsValid({"type": "QUARTER_ANY", "values": [2 ,3, 4]}, '2022-01-01'));
+assert('True if date is null and "nullEqualsTo" is true',
+    true, constraintIsValid({"type": "QUARTER_ANY", "nullEqualsTo": true}, null));
+assert('False if date is null and "nullEqualsTo" is false',
+    false, constraintIsValid({"type": "QUARTER_ANY", "nullEqualsTo": false}, null));
+assert('False if date is null "nullEqualsTo" default',
+    false, constraintIsValid({"type": "QUARTER_ANY"}, null));
+
+
+log(">>> Testing QUARTER_ANY_REF constraints");
+assert('False if "values" is missing',
+    false, constraintIsValid({"type": "QUARTER_ANY_REF"}, '2022-01-01'));
+assert('False if "values" is not an array',
+    false, constraintIsValid({"type": "QUARTER_ANY_REF", "values": {}}, '2022-01-01'));
+assert('False if "values" is empty',
+    false, constraintIsValid({"type": "QUARTER_ANY_REF", "values": []}, '2022-01-01'));
+assert('True if "values" do match',
+    true, constraintIsValid({"type": "QUARTER_ANY_REF", "values": ["prop1", "prop2[*]"]}, '2022-01-01',
+        {"prop1": 4, "prop2": [2, 1]}));
+assert('False if "values" do not match',
+    false, constraintIsValid({"type": "QUARTER_ANY_REF", "values": ["prop1", "prop2[*]"]}, '2022-01-01',
+        {"prop1": 4, "prop2": [3, 2]}));
+assert('True if date is null and "nullEqualsTo" is true',
+    true, constraintIsValid({"type": "QUARTER_ANY_REF", "nullEqualsTo": true}, null));
+assert('False if date is null and "nullEqualsTo" is false',
+    false, constraintIsValid({"type": "QUARTER_ANY_REF", "nullEqualsTo": false}, null));
+assert('False if date is null "nullEqualsTo" default',
+    false, constraintIsValid({"type": "QUARTER_ANY_REF"}, null));
+
+
+log(">>> Testing YEAR_ANY constraints");
+assert('False if "values" is missing',
+    false, constraintIsValid({"type": "YEAR_ANY"}, '2022-01-01'));
+assert('False if "values" is not an array',
+    false, constraintIsValid({"type": "YEAR_ANY", "values": {}}, '2022-01-01'));
+assert('False if "values" is empty',
+    false, constraintIsValid({"type": "YEAR_ANY", "values": []}, '2022-01-01'));
+assert('True if "values" do match',
+    true, constraintIsValid({"type": "YEAR_ANY", "values": [2023, 2022]}, '2022-01-01'));
+assert('False if "values" do not match',
+    false, constraintIsValid({"type": "YEAR_ANY", "values": [2023, 2021]}, '2022-01-01'));
+assert('True if date is null and "nullEqualsTo" is true',
+    true, constraintIsValid({"type": "YEAR_ANY", "nullEqualsTo": true}, null));
+assert('False if date is null and "nullEqualsTo" is false',
+    false, constraintIsValid({"type": "YEAR_ANY", "nullEqualsTo": false}, null));
+assert('False if date is null "nullEqualsTo" default',
+    false, constraintIsValid({"type": "YEAR_ANY"}, null));
+
+
+log(">>> Testing YEAR_ANY_REF constraints");
+assert('False if "values" is missing',
+    false, constraintIsValid({"type": "YEAR_ANY_REF"}, '2022-01-01'));
+assert('False if "values" is not an array',
+    false, constraintIsValid({"type": "YEAR_ANY_REF", "values": {}}, '2022-01-01'));
+assert('False if "values" is empty',
+    false, constraintIsValid({"type": "YEAR_ANY_REF", "values": []}, '2022-01-01'));
+assert('True if "values" do match',
+    true, constraintIsValid({"type": "YEAR_ANY_REF", "values": ["prop1", "prop2[*]"]}, '2022-01-01',
+        {"prop1": 2024, "prop2": [2021, 2022]}));
+assert('False if "values" do not match',
+    false, constraintIsValid({"type": "YEAR_ANY_REF", "values": ["prop1", "prop2[*]"]}, '2022-01-01',
+        {"prop1": 2024, "prop2": [2021, 2023]}));
+assert('True if date is null and "nullEqualsTo" is true',
+    true, constraintIsValid({"type": "YEAR_ANY_REF", "nullEqualsTo": true}, null));
+assert('False if date is null and "nullEqualsTo" is false',
+    false, constraintIsValid({"type": "YEAR_ANY_REF", "nullEqualsTo": false}, null));
+assert('False if date is null "nullEqualsTo" default',
+    false, constraintIsValid({"type": "YEAR_ANY_REF"}, null));
 
 
 log(">>> Testing inflatePropertyIfMultiIndexed");

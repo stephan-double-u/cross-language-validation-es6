@@ -1,5 +1,5 @@
 export const testValidationRules = {
-    "schemaVersion": "0.9",
+    "schemaVersion": "0.10",
     "mandatoryRules": {
         "sometype": {
             "customer": [
@@ -125,7 +125,27 @@ export const testValidationRules = {
     },
     "immutableRules": {
         "sometype": {
-            "number1": []
+            "number1": [],
+            "someDate": [
+                {
+                    "condition": {
+                        "property": "otherDate",
+                        "constraint": {
+                            "type": "VALUE_CHANGED"
+                        }
+                    }
+                }
+            ],
+            "otherDate": [
+                {
+                    "condition": {
+                        "property": "someDate",
+                        "constraint": {
+                            "type": "VALUE_UNCHANGED"
+                        }
+                    }
+                }
+            ],
         }
     },
     "contentRules": {
@@ -305,6 +325,93 @@ export const testValidationRules = {
     },
     "updateRules": {
         "sometype": {
+            "number1": [
+                {
+                    "constraint": {
+                        "type": "EQUALS_NONE_REF",
+                        "values": [
+                            "integerArray[*]"
+                        ]
+                    },
+                    "permissions": {
+                        "type": "ANY",
+                        "values": [
+                            "aaa"
+                        ]
+                    }
+                },
+                {
+                    "constraint": {
+                        "type": "EQUALS_NONE_REF",
+                        "values": [
+                            "integerArray[*]"
+                        ],
+                        "refTarget": "CURRENT_ENTITY"
+                    },
+                    "permissions": {
+                        "type": "ANY",
+                        "values": [
+                            "bbb"
+                        ]
+                    }
+                }
+            ],
+            "someDate": [
+                {
+                    "constraint": {
+                        "type": "VALUE_CHANGED"
+                    }
+                }
+            ],
+            "otherDate": [
+                {
+                    "constraint": {
+                        "type": "VALUE_UNCHANGED"
+                    }
+                }
+            ],
+            "number2": [
+                {
+                    "constraint": {
+                        "type": "RANGE",
+                        "min": 3
+                    },
+                    "permissions": {
+                        "type": "ANY",
+                        "values": [
+                            "aaa"
+                        ]
+                    },
+                    "condition": {
+                        "property": "number2",
+                        "constraint": {
+                            "type": "VALUE_CHANGED"
+                        }
+                    }
+                },
+                {
+                    "constraint": {
+                        "type": "RANGE",
+                        "min": 3
+                    },
+                    "permissions": {
+                        "type": "ANY",
+                        "values": [
+                            "bbb"
+                        ]
+                    },
+                    "condition": {
+                        "property": "number2",
+                        "constraint": {
+                            "type": "EQUALS_NONE_REF",
+                            "values": [
+                                "number2"
+                            ],
+                            "refTarget": "UPDATE_ENTITY"
+                        }
+                    }
+                }
+            ],
             "someString": [
                 {
                     "constraint": {

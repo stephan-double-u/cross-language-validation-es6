@@ -1,4 +1,4 @@
-const SCHEMA_VERSION = "0.9";
+const SCHEMA_VERSION = "0.10";
 
 const emptyValidationRules = {
     schemaVersion: SCHEMA_VERSION,
@@ -22,17 +22,36 @@ let defaultUpdateMessagePrefix = "error.validation.update.";
  * @param rules the validation rules
  */
 export function setValidationRules(rules) {
-    if (rules === undefined || rules === null
+    if (!isRealObject(rules)
         || rules.schemaVersion !== SCHEMA_VERSION
-        || rules.mandatoryRules === undefined
-        || rules.immutableRules === undefined
-        || rules.contentRules === undefined
-        || rules.updateRules === undefined) {
+        || "mandatoryRules" in rules && !isRealObject(rules.mandatoryRules)
+        || "immutableRules" in rules && !isRealObject(rules.immutableRules)
+        || "contentRules" in rules && !isRealObject(rules.contentRules)
+        || "updateRules" in rules && !isRealObject(rules.updateRules)) {
         console.error("Rules are not valid. Top level content does not match the schema version %s", SCHEMA_VERSION);
         crossLanguageValidationRules = emptyValidationRules;
+        return false;
     } else {
+        // rule keys are optional; set to empty object for easier access
+        if (rules.mandatoryRules === undefined) {
+            rules['mandatoryRules'] = {};
+        }
+        if (rules.immutableRules === undefined) {
+            rules['immutableRules'] = {};
+        }
+        if (rules.contentRules === undefined) {
+            rules['contentRules'] = {};
+        }
+        if (rules.updateRules === undefined) {
+            rules['updateRules'] = {};
+        }
         crossLanguageValidationRules = rules;
+        return true;
     }
+}
+
+function isRealObject(param) {
+    return typeof param === 'object' && !Array.isArray(param) && param !== null;
 }
 
 export function getDefaultMandatoryMessagePrefix() {
@@ -87,8 +106,9 @@ export function getAllowedPropertyValues(typeName, property, object, userPerms) 
     const contentRules = getMatchingContentPropertyRules(typeName, property, object, userPerms);
     let allowedValues = getAllowedPropertyValuesForRule(contentRules, object);
     if (allowedValues === undefined) {
-        const updateRules = getMatchingUpdatePropertyRules(typeName, property, object, userPerms);
+        const updateRules = getMatchingUpdatePropertyRules(typeName, property, object, object, userPerms);
         allowedValues = getAllowedPropertyValuesForRule(updateRules, object);
+
     }
     console.debug("Allowed values for: ", typeName, property, userPerms, "->", allowedValues);
     return allowedValues;
@@ -132,40 +152,42 @@ function getAllPropertyValues(refProps, object) {
 
 /**
  * For all properties of the given type any _mandatory_ rule is validated.
- * Provided that all conditions and permissions of a rule are matching the given object and user permissions,
+ * Provided that all conditions and permissions of a rule are matching the given editedEntity and user permissions,
  * it is checked that the property value is not _null_. Otherwise, an error code is added to the array that is returned.
  *
  * @param typeName the name of the type to be validated
- * @param object the object against which the rule conditions are checked
+ * @param editedEntity the editedEntity against which the rule conditions are checked
  * @param userPerms the user permissions against which the rule permissions are checked
  * @returns an possibly empty array with error codes
  */
-export function validateMandatoryRules(typeName, object, userPerms) {
+export function validateMandatoryRules(typeName, editedEntity, userPerms) {
     let rules = crossLanguageValidationRules.mandatoryRules[typeName];
     return rules === undefined ? [] : Object.keys(rules)
-        .flatMap(property => validateMandatoryPropertyRules(typeName, property, object, userPerms))
+        .flatMap(property => validateMandatoryPropertyRules(typeName, property, editedEntity, userPerms))
         .filter(e => e !== []);
 }
 
 /**
  * For the given properties of the given type any _mandatory_ rule is validated.
- * Provided that all conditions and permissions of a rule are matching the given object and user permissions,
+ * Provided that all conditions and permissions of a rule are matching the given editedEntity and user permissions,
  * it is checked that the property value is not _null_. Otherwise, an error code is added to the array that is returned.
  *
  * @param typeName the name of the type to be validated
  * @param property the property to be validated
- * @param object the object against which the rule conditions are checked
+ * @param editedEntity the editedEntity against which the rule conditions are checked
  * @param userPerms the user permissions against which the rule permissions are checked
  * @returns an possibly empty array with error codes
  */
-export function validateMandatoryPropertyRules(typeName, property, object, userPerms) {
-    let matchingRules = getMatchingMandatoryPropertyRules(typeName, property, object, userPerms);
+export function validateMandatoryPropertyRules(typeName, property, editedEntity, userPerms) {
+    let matchingRules = getMatchingMandatoryPropertyRules(typeName, property, editedEntity, userPerms);
     if (matchingRules === undefined) {
         return [];
     }
     return matchingRules
-        .filter(rule => !conditionIsMet({property: property, constraint: {type: "EQUALS_NOT_NULL"}}, object))
-        .map(rule => buildErrorMessage(defaultMandatoryMessagePrefix, null, typeName, rule.errorCodeControl, property));
+        .filter(rule => !propertyConstraintIsMet({property: property, constraint: {type: "EQUALS_NOT_NULL"}},
+            editedEntity, null))
+        .map(rule => buildErrorMessage(defaultMandatoryMessagePrefix, null, typeName, rule.errorCodeControl,
+            property));
 }
 
 /**
@@ -184,9 +206,9 @@ export function isPropertyMandatory(typeName, property, object, userPerms) {
     return matchingRules !== undefined && matchingRules.length > 0;
 }
 
-function getMatchingMandatoryPropertyRules(typeName, property, object, userPerms) {
-    console.debug("Getting mandatory rules for:", typeName, property, object, userPerms);
-    if (object === undefined) {
+function getMatchingMandatoryPropertyRules(typeName, property, editedEntity, userPerms) {
+    console.debug("Getting mandatory rules for:", typeName, property, editedEntity, userPerms);
+    if (editedEntity === undefined) {
         return undefined;
     }
     if (validateAndGetTerminalAggregateFunctionIfExist(property)) {
@@ -194,35 +216,37 @@ function getMatchingMandatoryPropertyRules(typeName, property, object, userPerms
         return undefined;
     }
     let typeRules = crossLanguageValidationRules.mandatoryRules[typeName];
-    return getMatchingPropertyRules(typeRules, property, object, userPerms);
+    return getMatchingRules(typeRules, property, editedEntity, null, userPerms);
 }
 
 
-export function validateImmutableRules(typeName, originalObject, modifiedObject, userPerms) {
+export function validateImmutableRules(typeName, currentEntity, editedEntity, userPerms) {
     let rules = crossLanguageValidationRules.immutableRules[typeName];
     return rules === undefined ? [] : Object.keys(rules)
-        .flatMap(property => validateImmutablePropertyRules(typeName, property, originalObject, modifiedObject, userPerms))
+        .flatMap(property => validateImmutablePropertyRules(typeName, property, currentEntity, editedEntity, userPerms))
         .filter(e => e !== []);
 }
 
-export function validateImmutablePropertyRules(typeName, property, originalObject, modifiedObject, userPerms) {
-    let matchingRules = getMatchingImmutablePropertyRules(typeName, property, originalObject, userPerms);
+export function validateImmutablePropertyRules(typeName, property, currentEntity, editedEntity, userPerms) {
+    let matchingRules = getMatchingImmutablePropertyRules(typeName, property, currentEntity, editedEntity, userPerms);
     if (matchingRules === undefined) {
         return [];
     }
     return matchingRules
-        .filter(rule => !propertyValuesEquals(property, originalObject, modifiedObject))
-        .map(rule => buildErrorMessage(defaultImmutableMessagePrefix, null, typeName, rule.errorCodeControl, property));
+        .filter(rule => !propertyConstraintIsMet({property: property, constraint: {type: "VALUE_UNCHANGED"}},
+            currentEntity, editedEntity))
+        .map(rule => buildErrorMessage(defaultImmutableMessagePrefix, null, typeName, rule.errorCodeControl,
+            property));
 }
 
 export function isPropertyImmutable(typeName, property, object, userPerms) {
-    const matchingRules = getMatchingImmutablePropertyRules(typeName, property, object, userPerms);
+    const matchingRules = getMatchingImmutablePropertyRules(typeName, property, object, object, userPerms);
     return matchingRules !== undefined && matchingRules.length > 0;
 }
 
-function getMatchingImmutablePropertyRules(typeName, property, object, userPerms) {
-    console.debug("Getting immutable rules for:", typeName, property, object, userPerms);
-    if (object === undefined) {
+function getMatchingImmutablePropertyRules(typeName, property, currentEntity, editedEntity, userPerms) {
+    console.debug("Getting immutable rules for:", typeName, property, currentEntity, editedEntity, userPerms);
+    if (currentEntity === undefined || editedEntity === undefined) {
         return undefined;
     }
     if (validateAndGetTerminalAggregateFunctionIfExist(property)) {
@@ -230,79 +254,81 @@ function getMatchingImmutablePropertyRules(typeName, property, object, userPerms
         return undefined;
     }
     let typeRules = crossLanguageValidationRules.immutableRules[typeName];
-    return getMatchingPropertyRules(typeRules, property, object, userPerms);
+    return getMatchingRules(typeRules, property, currentEntity, editedEntity, userPerms);
 }
 
-function propertyValuesEquals(property, originalObject, modifiedObject) {
-    let propertiesToCheck = inflatePropertyIfMultiIndexed(property, originalObject);
-    if (propertiesToCheck.length !== inflatePropertyIfMultiIndexed(property, modifiedObject).length) {
-        return false;
-    }
-    for (let propertyToCheck of propertiesToCheck) {
-        let originalValue = getPropertyValue(propertyToCheck, originalObject);
-        let modifiedValue = getPropertyValue(propertyToCheck, modifiedObject);
-        if (originalValue !== modifiedValue) {
-            return false;
-        }
-    }
-    return true;
-}
+// function propertyValuesEquals(property, currentEntity, editedEntity) {
+//     let propertiesToCheck = inflatePropertyIfMultiIndexed(property, currentEntity);
+//     if (propertiesToCheck.length !== inflatePropertyIfMultiIndexed(property, editedEntity).length) {
+//         return false;
+//     }
+//     for (let propertyToCheck of propertiesToCheck) {
+//         let originalValue = getPropertyValue(propertyToCheck, currentEntity);
+//         let modifiedValue = getPropertyValue(propertyToCheck, editedEntity);
+//         if (originalValue !== modifiedValue) {
+//             return false;
+//         }
+//     }
+//     return true;
+// }
 
-export function validateContentRules(typeName, object, userPerms) {
+export function validateContentRules(typeName, editedEntity, userPerms) {
     let rules = crossLanguageValidationRules.contentRules[typeName];
     return rules === undefined ? [] : Object.keys(rules)
-        .flatMap(property => validateContentPropertyRules(typeName, property, object, userPerms))
+        .flatMap(property => validateContentPropertyRules(typeName, property, editedEntity, userPerms))
         .filter(e => e !== []);
 }
 
-export function validateContentPropertyRules(typeName, property, object, userPerms) {
-    let matchingRules = getMatchingContentPropertyRules(typeName, property, object, userPerms);
+export function validateContentPropertyRules(typeName, property, editedEntity, userPerms) {
+    let matchingRules = getMatchingContentPropertyRules(typeName, property, editedEntity, userPerms);
     if (matchingRules === undefined) {
         return [];
     }
     return matchingRules
         .filter(rule => rule.constraint !== undefined && rule.constraint.type !== undefined)
-        .filter(rule => !conditionIsMet({property: property, constraint: rule.constraint}, object))
+        .filter(rule => !propertyConstraintIsMet({property: property, constraint: rule.constraint},
+            editedEntity, null))
         .map(rule => buildErrorMessage(defaultContentMessagePrefix, rule.constraint.type.toLowerCase(), typeName,
             rule.errorCodeControl, property));
 }
 
-function getMatchingContentPropertyRules(typeName, property, object, userPerms) {
-    console.debug("Getting content rules for:", typeName, property, object, userPerms);
-    if (object === undefined) {
+function getMatchingContentPropertyRules(typeName, property, editedEntity, userPerms) {
+    console.debug("Getting content rules for:", typeName, property, editedEntity, userPerms);
+    if (editedEntity === undefined) {
         return undefined;
     }
     let typeRules = crossLanguageValidationRules.contentRules[typeName];
-    return getMatchingPropertyRules(typeRules, property, object, userPerms);
+    return getMatchingRules(typeRules, property, editedEntity, null, userPerms);
 }
 
 
-export function validateUpdateRules(typeName, originalObject, modifiedObject, userPerms) {
+export function validateUpdateRules(typeName, currentEntity, editedEntity, userPerms) {
     let rules = crossLanguageValidationRules.updateRules[typeName];
     return rules === undefined ? [] : Object.keys(rules)
-        .flatMap(property => validateUpdatePropertyRules(typeName, property, originalObject, modifiedObject, userPerms))
+        .flatMap(property => validateUpdatePropertyRules(typeName, property, currentEntity, editedEntity, userPerms))
         .filter(e => e !== []);
 }
 
-export function validateUpdatePropertyRules(typeName, property, originalObject, modifiedObject, userPerms) {
-    let matchingRules = getMatchingUpdatePropertyRules(typeName, property, originalObject, userPerms);
+export function validateUpdatePropertyRules(typeName, property, currentEntity, editedEntity, userPerms) {
+    let matchingRules = getMatchingUpdatePropertyRules(typeName, property, currentEntity, editedEntity, userPerms);
     if (matchingRules === undefined) {
         return [];
     }
     return matchingRules
         .filter(rule => rule.constraint !== undefined && rule.constraint.type !== undefined)
-        .filter(rule => !conditionIsMet({property: property, constraint: rule.constraint}, modifiedObject))
+        .filter(rule => !propertyConstraintIsMet({property: property, constraint: rule.constraint},
+            editedEntity, currentEntity))
         .map(rule => buildErrorMessage(defaultUpdateMessagePrefix, rule.constraint.type.toLowerCase(), typeName,
             rule.errorCodeControl, property));
 }
 
-function getMatchingUpdatePropertyRules(typeName, property, object, userPerms) {
-    console.debug("Getting update rules for:", typeName, property, object, userPerms);
-    if (object === undefined) {
+function getMatchingUpdatePropertyRules(typeName, property, currentEntity, editedEntity, userPerms) {
+    console.debug("Getting update rules for:", typeName, property, currentEntity, editedEntity, userPerms);
+    if (currentEntity === undefined || editedEntity === undefined) {
         return undefined;
     }
     let typeRules = crossLanguageValidationRules.updateRules[typeName];
-    return getMatchingPropertyRules(typeRules, property, object, userPerms);
+    return getMatchingRules(typeRules, property, currentEntity, editedEntity, userPerms);
 }
 
 
@@ -357,7 +383,7 @@ function validateAndGetTerminalAggregateFunctionIfExist(property) {
  * @returns _undefined_ if _typeRules_ resp. _typeRules[property]_ is _undefined_, otherwise an array with matching the
  * rules.
  */
-function getMatchingPropertyRules(typeRules, property, object, userPerms) {
+function getMatchingRules(typeRules, property, thisEntity, thatEntity, userPerms) {
     let propertyRules = typeRules !== undefined ? typeRules[property] : undefined;
     if (propertyRules === undefined) {
         return undefined;
@@ -367,7 +393,7 @@ function getMatchingPropertyRules(typeRules, property, object, userPerms) {
     }
     return propertyRules
         .filter(rule => rule.permissions === undefined || arePermissionsMatching(rule.permissions, userPerms))
-        .filter(rule => allConditionsAreMet(getConditionsTopGroup(rule), object));
+        .filter(rule => allConditionsAreMet(getConditionsTopGroup(rule), thisEntity, thatEntity));
 }
 
 function arePermissionsMatching(conditionPerms, userPerms) {
@@ -424,14 +450,14 @@ function getConditionsTopGroup(propertyRule) {
  * Validates if all conditions groups are met according to the _group operator_ (i.e. AND resp. OR).
  * If groups are ANDed each group must evaluate to _true_, if they are ORed only one group must evaluate to _true_.
  */
-function allConditionsAreMet(conditionsTopGroup, object) {
+function allConditionsAreMet(conditionsTopGroup, thisEntity, thatEntity) {
     if (conditionsTopGroup.conditionsGroups === undefined) {
         console.error("Should not happen: conditionsGroups is undefined")
         return false;
     }
     let operator = conditionsTopGroup.operator;
     for (const subGroup of conditionsTopGroup.conditionsGroups) {
-        let conditionsAreMet = groupConditionsAreMet(subGroup, object);
+        let conditionsAreMet = groupConditionsAreMet(subGroup, thisEntity, thatEntity);
         if (conditionsAreMet) {
             if (operator === "OR") {
                 return true;
@@ -446,15 +472,15 @@ function allConditionsAreMet(conditionsTopGroup, object) {
 }
 
 /*
- * Validates if group conditions are met according to the'group operator' (i.e. AND resp. OR).
+ * Validates if group conditions are met according to the 'group operator' (i.e. AND resp. OR).
  * If conditions are ANDed each condition must evaluate to _true_, if they are ORed only one condition must evaluate
  * to _true_.
  */
-function groupConditionsAreMet(conditionsSubGroup, object) {
+function groupConditionsAreMet(conditionsSubGroup, thisEntity, thatEntity) {
     let operator = conditionsSubGroup.operator;
     let conditions = conditionsSubGroup.conditions;
     for (let curCondition of conditions) {
-        let isMet = conditionIsMet(curCondition, object);
+        let isMet = conditionIsMet(curCondition, thisEntity, thatEntity, false);
         if (operator === "OR") {
             if (isMet) {
                 return true;
@@ -470,17 +496,75 @@ function groupConditionsAreMet(conditionsSubGroup, object) {
     return operator === "AND";
 }
 
+function propertyConstraintIsMet(condition, thisEntity, thatEntity) {
+    return conditionIsMet(condition, thisEntity, thatEntity, true);
+}
+
 /**
- * Validates the condition against the object.
+ * Validates the condition against the thisEntity resp. thatEntity.
  */
-function conditionIsMet(condition, object) {
-    const propertyValues = getPropertyValues(condition.property, object)
+function conditionIsMet(condition, thisEntity, thatEntity, isPropertyConstraint) {
+    if (isConstraintOfAnyType(condition.constraint, "VALUE_CHANGED", "VALUE_UNCHANGED")) {
+        return validateValueComparerConstraint(condition, thisEntity, thatEntity);
+    } else {
+        return validateNoneValueComparerConstraint(condition, thisEntity, thatEntity, isPropertyConstraint);
+    }
+}
+
+/*
+ * For all constraints of mandatory and content rules thisEntity is the editedEntity and thatEntity is null.
+ * For property constraints of update rules thisEntity is the editedEntity and thatEntity the currentEntity.
+ * For conditions constraints of immutable and update rules thisEntity is the currentEntity and thatEntity the
+ * editedEntity.
+ * Constraints are evaluated against thisEntity, except for immutable and update rule reference constraints, if
+ * 1. a reference constraint key 'refTarget' equals 'CURRENT_ENTITY'
+ * 2. a consition constraint key 'refTarget' equals 'UPDATE_ENTITY'
+ */
+function validateNoneValueComparerConstraint(condition, thisEntity, thatEntity, isPropertyConstraint) {
+    const propertyValues = getPropertyValues(condition.property, thisEntity);
+    let targetEntity = thisEntity;
+
+    const isRefConstraint = isConstraintOfAnyType(condition.constraint,
+        'EQUALS_ANY_REF', 'EQUALS_NONE_REF', 'QUARTER_ANY_REF', 'YEAR_ANY_REF');
+    const refTarget = condition.constraint["refTarget"];
+    if (refTarget !== undefined) {
+        if (thatEntity === null || !isRefConstraint) {
+            console.warn("The key 'refTarget' is only allowed in immutable and update rule reference " +
+                "constraints and therefore ignored.");
+        } else if (refTarget !== 'CURRENT_ENTITY' && refTarget !== 'UPDATE_ENTITY') {
+            console.warn("Value for key 'refTarget' is invalid and therefore ignored: " + refTarget);
+        } else if ((isPropertyConstraint && refTarget === 'CURRENT_ENTITY'
+                || !isPropertyConstraint && refTarget === 'UPDATE_ENTITY')) {
+            targetEntity = thatEntity;
+        }
+    }
+
     for (const propValue of propertyValues) {
         if (propValue === undefined) {
             console.warn("Condition ", condition, "propValue is undefined; return false");
             return false;
         }
-        if (!constraintIsValid(condition.constraint, propValue, object)) {
+        if (!constraintIsValid(condition.constraint, propValue, targetEntity)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+function validateValueComparerConstraint(condition, thisEntity, thatEntity) {
+    const thisPropertyValues = getPropertyValues(condition.property, thisEntity);
+    const thatPropertyValues = getPropertyValues(condition.property, thatEntity);
+    if (thisPropertyValues.length !== thatPropertyValues.length) {
+        return isConstraintOfAnyType(condition.constraint, "VALUE_CHANGED")
+    }
+    for (let i = 0; i < thisPropertyValues.length; i++) {
+        const thisValue = thisPropertyValues[i];
+        const thatValue = thatPropertyValues[i];
+        if (thisValue === undefined || thatValue === undefined) {
+            console.warn("Condition ", condition, "property value is undefined; return false");
+            return false;
+        }
+        if (!constraintIsValid(condition.constraint, thisValue, thatValue)) {
             return false;
         }
     }
@@ -491,7 +575,7 @@ function conditionIsMet(condition, object) {
  Returns an array with one or more property values.
  For a simple property and for a property with a terminal aggregate function one value is returned.
  For a property with an index definition the number of values returned depends on that index definition.
- Epamples:
+ Examples:
  "foo", { foo: "bar"] } -> ["bar"]
  "foo[0, 2]", { foo: ["a", "b", "c"] } -> ["a", "c"]
  "foo[*]#sum", { foo: [1, 3, 5] } -> [9]
@@ -507,7 +591,7 @@ function getPropertyValues(property, object) {
     }
     switch (aggregateFunction) {
         case "sum":
-            const summation = summedUpPropertyValues(propertyValues);
+            const summation = sumUpPropertyValues(propertyValues);
             return [summation];
         case "distinct":
             const valuesAreDistinct = distinctCheckForPropertyValues(propertyValues);
@@ -518,9 +602,9 @@ function getPropertyValues(property, object) {
     }
 }
 
-function summedUpPropertyValues(propertyValues) {
+function sumUpPropertyValues(propertyValues) {
     const sum = propertyValues.reduce((partialSum, a) => partialSum + a, 0);
-    console.debug("summedUpPropertyValues: ", propertyValues, sum);
+    console.debug("sumUpPropertyValues: ", propertyValues, sum);
     return sum;
 }
 
@@ -538,7 +622,7 @@ export function constraintIsValid(constraint, propValue, object) {
         'YEAR_ANY', 'YEAR_ANY_REF')) {
         return validateNullValueAgainstNullEqualsToValue(constraint)
     } else {
-        return validateContraint(constraint, propValue, object);
+        return validateConstraint(constraint, propValue, object);
     }
 }
 
@@ -553,7 +637,7 @@ function validateNullValueAgainstNullEqualsToValue(constraint) {
     }
 }
 
-function validateContraint(constraint, propValue, object) {
+function validateConstraint(constraint, propValue, object) {
     let isMet = false;
     switch (constraint.type) {
         case 'EQUALS_ANY':
@@ -591,6 +675,10 @@ function validateContraint(constraint, propValue, object) {
         case 'YEAR_ANY':
         case 'YEAR_ANY_REF':
             isMet =  yearConstraintIsMet(constraint, propValue, object);
+            break;
+        case 'VALUE_CHANGED':
+        case 'VALUE_UNCHANGED':
+            isMet =  valueConstraintIsMet(constraint, propValue, object);
             break;
         default:
             console.error("Constraint type not supported (yet): ", constraint.type)
@@ -683,7 +771,7 @@ export function equalsRefConstraintIsMet(constraint, propValue, object) {
 
 function equalsRefPropertyMatch(refProps, propValue, object) {
     const refValues = getAllPropertyValues(refProps, object)
-    let equals = false;
+    let equals;
     const propAsDate = getStringAsValidDateOrUndefined(propValue);
     if (propAsDate !== undefined) {
         const matchLength =  refValues.map(v => new Date(v))
@@ -856,7 +944,8 @@ export function dateConstraintIsMet(constraint, propValue) {
     const match = (minDaysDate === undefined || propAsDate >= minDaysDate)
         && (maxDaysDate === undefined || propAsDate <= maxDaysDate);
 
-    console.debug("dateConstraintIsMet: ", constraint, minDaysDate?.toISOString(), "<=", propAsDate.toISOString(), "<=", maxDaysDate?.toISOString(), ":", match);
+    console.debug("dateConstraintIsMet: ", constraint, minDaysDate?.toISOString(), "<=", propAsDate.toISOString(), "<=",
+        maxDaysDate?.toISOString(), ":", match);
     return match;
 }
 
@@ -878,7 +967,8 @@ function weekdayConstraintIsMet(constraint, propValue) {
     const propAsDateWeekday = weekdays[propAsDate.getDay()]; // 0=Sunday
 
     const match = values.filter(day => day === propAsDateWeekday).length !== 0;
-    console.debug("weekdayConstraintIsMet: ", constraint, propAsDate.toISOString(), propAsDateWeekday, " included? ", match);
+    console.debug("weekdayConstraintIsMet: ", constraint, propAsDate.toISOString(), propAsDateWeekday, " included? ",
+        match);
     return match;
 }
 
@@ -943,6 +1033,38 @@ function yearConstraintIsMet(constraint, propValue, object) {
 function isNonEmptyArray(object) {
     return object !== undefined && Array.isArray(object) && object.length > 0;
 }
+
+function valueConstraintIsMet(constraint, thisValue, thatValue) {
+    switch (constraint.type) {
+        case 'VALUE_CHANGED':
+            return !deepEquals(thisValue, thatValue);
+        case 'VALUE_UNCHANGED':
+            return deepEquals(thisValue, thatValue);
+        default:
+            console.error("Constraint type not supported (yet): ", constraint.type);
+            return false;
+    }
+}
+
+const deepEquals = (a, b) => {
+    if (a === b) {
+        return true;
+    }
+    if (a instanceof Date && b instanceof Date) {
+        return a.getTime() === b.getTime();
+    }
+    if (!a || !b || (typeof a !== 'object' && typeof b !== 'object')) {
+        return a === b;
+    }
+    if (a.prototype !== b.prototype) {
+        return false;
+    }
+    const keys = Object.keys(a);
+    if (keys.length !== Object.keys(b).length){
+        return false;
+    }
+    return keys.every(k => deepEquals(a[k], b[k]));
+};
 
 function getStringAsValidDateOrUndefined(value, logErrorIfInvalid) {
     const valueAsDate = new Date(value);

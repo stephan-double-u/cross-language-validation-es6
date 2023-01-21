@@ -1,5 +1,5 @@
 export const testValidationRules = {
-    "schemaVersion": "0.10",
+    "schemaVersion": "0.11",
     "mandatoryRules": {
         "sometype": {
             "customer": [

@@ -1,4 +1,4 @@
-const SCHEMA_VERSION = "0.10";
+const SCHEMA_VERSION = "0.11";
 
 const emptyValidationRules = {
     schemaVersion: SCHEMA_VERSION,
@@ -617,9 +617,8 @@ function distinctCheckForPropertyValues(propertyValues) {
 
 // export for easier testing
 export function constraintIsValid(constraint, propValue, object) {
-    if (propValue === null && isConstraintOfAnyType(constraint, 'EQUALS_ANY', 'EQUALS_ANY_REF',
-        'EQUALS_NONE', 'EQUALS_NONE_REF', 'WEEKDAY_ANY', 'QUARTER_ANY', 'QUARTER_ANY_REF',
-        'YEAR_ANY', 'YEAR_ANY_REF')) {
+    if (propValue === null && !isConstraintOfAnyType(constraint,
+        'EQUALS_NULL', 'EQUALS_NOT_NULL', 'VALUE_CHANGED', 'VALUE_UNCHANGED')) {
         return validateNullValueAgainstNullEqualsToValue(constraint)
     } else {
         return validateConstraint(constraint, propValue, object);
@@ -631,6 +630,7 @@ function validateNullValueAgainstNullEqualsToValue(constraint) {
     switch (constraint.type) {
         case 'EQUALS_NONE':
         case 'EQUALS_NONE_REF':
+        case 'REGEX_NONE':
             return nullEqualsTo === undefined || nullEqualsTo === true;
         default:
             return nullEqualsTo !== undefined && nullEqualsTo === true;

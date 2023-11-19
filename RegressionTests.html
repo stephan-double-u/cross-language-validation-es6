@@ -535,16 +535,16 @@ function testDateConstraints() {
     assert('PERIOD max 0 against now',
         true, constraintIsValid({"type": "PERIOD_DAYS", "max": 0}, new Date().toISOString()));
     assert('PERIOD min -365 max 365 against now - 365 days',
-        true, constraintIsValid({"type": "PAST_DAYS", "min": -365, "max": 365},
-            new Date(currentYear - 1, currentMonth, currentDate).toISOString()));
+        true, constraintIsValid({"type": "PERIOD_DAYS", "min": -365, "max": 365},
+            new Date(currentYear - 1, currentMonth, currentDate + 1).toISOString()));
     assert('PERIOD min -365 max 365 against now + 365 days',
-        true, constraintIsValid({"type": "PAST_DAYS", "min": -365, "max": 365},
-            new Date(currentYear + 1, currentMonth, currentDate).toISOString()));
+        true, constraintIsValid({"type": "PERIOD_DAYS", "min": -365, "max": 365},
+            new Date(currentYear + 1, currentMonth, currentDate - 1).toISOString()));
     assert('PERIOD min -365 max 365 against now - 2 years',
-        false, constraintIsValid({"type": "PAST_DAYS", "min": -365, "max": 365},
+        false, constraintIsValid({"type": "PERIOD_DAYS", "min": -365, "max": 365},
             new Date(currentYear - 2, currentMonth, currentDate).toISOString()));
     assert('PERIOD min -365 max 365 against now + 2 years',
-        false, constraintIsValid({"type": "PAST_DAYS", "min": -365, "max": 365},
+        false, constraintIsValid({"type": "PERIOD_DAYS", "min": -365, "max": 365},
             new Date(currentYear + 2, currentMonth, currentDate).toISOString()));
 }
 

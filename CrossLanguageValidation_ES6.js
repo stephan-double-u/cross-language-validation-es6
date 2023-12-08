@@ -1,4 +1,4 @@
-const SCHEMA_VERSION = "0.11";
+const SCHEMA_VERSION = "0.12";
 
 const emptyValidationRules = {
     schemaVersion: SCHEMA_VERSION,
@@ -518,7 +518,7 @@ function conditionIsMet(condition, thisEntity, thatEntity, isPropertyConstraint)
  * editedEntity.
  * Constraints are evaluated against thisEntity, except for immutable and update rule reference constraints, if
  * 1. a reference constraint key 'refTarget' equals 'CURRENT_ENTITY'
- * 2. a consition constraint key 'refTarget' equals 'UPDATE_ENTITY'
+ * 2. a condition constraint key 'refTarget' equals 'UPDATE_ENTITY'
  */
 function validateNoneValueComparerConstraint(condition, thisEntity, thatEntity, isPropertyConstraint) {
     const propertyValues = getPropertyValues(condition.property, thisEntity);
@@ -663,6 +663,7 @@ function validateConstraint(constraint, propValue, object) {
         case 'FUTURE_DAYS':
         case 'PAST_DAYS':
         case 'PERIOD_DAYS':
+        case 'YEAR_RANGE':
             isMet =  dateConstraintIsMet(constraint, propValue);
             break;
         case 'WEEKDAY_ANY':
@@ -674,7 +675,7 @@ function validateConstraint(constraint, propValue, object) {
             break;
         case 'YEAR_ANY':
         case 'YEAR_ANY_REF':
-            isMet =  yearConstraintIsMet(constraint, propValue, object);
+            isMet =  yearAnyConstraintIsMet(constraint, propValue, object);
             break;
         case 'VALUE_CHANGED':
         case 'VALUE_UNCHANGED':
@@ -905,7 +906,7 @@ function rangeMinMaxAreValidDates(constraint, minAsDate, maxAsDate) {
 }
 
 /**
- * Validates FUTURE_DAYS, PAST_DAYS and PERIOD_DAYS constraint.
+ * Validates FUTURE_DAYS, PAST_DAYS, PERIOD_DAYS and YEAR_RANGE constraint.
  */
 export function dateConstraintIsMet(constraint, propValue) {
     if (constraint.min === undefined && constraint.max === undefined) {
@@ -915,21 +916,47 @@ export function dateConstraintIsMet(constraint, propValue) {
     if (propValueIsNullOrUndefined(propValue)) {
         return false;
     }
-
     let propAsDate = getStringAsValidDateOrUndefined(propValue, true);
     if (propAsDate === undefined) {
         return false;
     }
     propAsDate = stripOffTime(propAsDate);
+    let min = constraint.min;
+    let max = constraint.max;
+    let match;
+    if ("YEAR_RANGE" === constraint.type) {
+        const rangeType = constraint.rangeType
+        if (rangeType === undefined || (rangeType !== "ABSOLUTE" && rangeType !== "RELATIVE")) {
+            console.error("YEAR_RANGE constraint invalid or missing 'rangeType' key: ", constraint);
+            return false;
+        }
+        match = validateYearRange(propAsDate, min, max, constraint.rangeType);
+    } else {
+        match = validateDateMinMax(propAsDate, min, max, constraint.type);
+    }
+    console.debug("dateConstraintIsMet: ", constraint, min, "'<='", propAsDate, "'<='", max, ":", match);
+    return match;
+}
 
-    let minDays = constraint.min;
-    let maxDays = constraint.max;
-    if ("PAST_DAYS" === constraint.type) {
+function validateYearRange(propAsDate, min, max, rangeType) {
+    const yearToValidate = propAsDate.getFullYear();
+    let minAbs = min;
+    let maxAbs = max;
+    if (rangeType === "RELATIVE") {
+        const currentYear = new Date().getFullYear();
+        minAbs = min != null ? min + currentYear : null;
+        maxAbs = max != null ? max + currentYear : null;
+    }
+    return (min === undefined || yearToValidate >= minAbs)
+        && (max === undefined || yearToValidate <= maxAbs)
+}
+
+function validateDateMinMax(propAsDate, minDays, maxDays, type) {
+    if ("PAST_DAYS" === type) {
         const minDaysCopy = minDays;
         minDays = maxDays !== undefined ? -1 * maxDays : undefined;
         maxDays = minDaysCopy !== undefined ? -1 * minDaysCopy : undefined;
     }
-
     let minDaysDate;
     if (minDays !== undefined) {
         minDaysDate = getToday();
@@ -940,13 +967,8 @@ export function dateConstraintIsMet(constraint, propValue) {
         maxDaysDate = getToday();
         maxDaysDate.setDate(maxDaysDate.getDate() + maxDays);
     }
-
-    const match = (minDaysDate === undefined || propAsDate >= minDaysDate)
+    return (minDaysDate === undefined || propAsDate >= minDaysDate)
         && (maxDaysDate === undefined || propAsDate <= maxDaysDate);
-
-    console.debug("dateConstraintIsMet: ", constraint, minDaysDate?.toISOString(), "<=", propAsDate.toISOString(), "<=",
-        maxDaysDate?.toISOString(), ":", match);
-    return match;
 }
 
 /**
@@ -1004,7 +1026,7 @@ function quarterConstraintIsMet(constraint, propValue, object) {
 /**
  * Validates YEAR_ANY and YEAR_ANY_REF constraint.
  */
-function yearConstraintIsMet(constraint, propValue, object) {
+function yearAnyConstraintIsMet(constraint, propValue, object) {
     let values = constraint.values;
     if (!isNonEmptyArray(values)) {
         console.error("Constraint is missing 'values' array property with at least one element: ", constraint);

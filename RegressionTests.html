@@ -60,13 +60,7 @@ function assert(msg, expected, compare) {
 }
 
 if (setValidationRules(testValidationRules)) {
-    testGetAllowedPropertyValues();
-    testIsPropertyMandatory();
-    testMandatoryRules();
-    testImmutableRules();
-    testContentRules();
-    testUpdateRules();
-
+    testConstraintsType();
     testEqualsConstraints();
     testEqualsRefConstraints();
     testRegexConstraints()
@@ -76,13 +70,19 @@ if (setValidationRules(testValidationRules)) {
     testWeekdayConstraints();
     testQuarterConstraints();
     testQuarterRefConstraints();
-    testYearConstraints();
-    testYearRefConstraints();
-
+    testYearAnyConstraints();
+    testYearAnyRefConstraints();
     testValueChangedAndUnchangedConstraints();
-    testInflatePropertyIfMultiIndexed();
+
+    testMandatoryRules();
+    testImmutableRules();
+    testContentRules();
+    testUpdateRules();
+    testIsPropertyMandatory();
+    testGetAllowedPropertyValues();
     testDefaultMessagePrefix();
     testSetValidationRules();
+    testInflatePropertyIfMultiIndexed();
 } else {
     assert("The testValidationRules JSON (i.e. its top level content) is not valid. All further tests are skipped",
         true, false);
@@ -91,66 +91,440 @@ if (setValidationRules(testValidationRules)) {
 log("END OF TESTS");
 logResult();
 
-function testSetValidationRules() {
-    log(">>> Testing setValidationRules");
-    assert('rules must not be undefined',
-        false, setValidationRules(undefined));
-    assert('rules must not be null',
-        false, setValidationRules(null));
-    assert('rules must be an object',
-        false, setValidationRules("wrong"));
-    assert('schema version must match',
-        false, setValidationRules({"schemaVersion": "-1"}));
-    assert('given mandatoryRules key must be object',
-        false, setValidationRules({"schemaVersion": "0.11", "mandatoryRules": null}));
-    assert('given immutableRules key must be object',
-        false, setValidationRules({"schemaVersion": "0.11", "immutableRules": undefined}));
-    assert('given contentRules key must be object',
-        false, setValidationRules({"schemaVersion": "0.11", "contentRules": 42}));
-    assert('given updateRules key must be object',
-        false, setValidationRules({"schemaVersion": "0.11", "updateRules": []}));
-
-    assert('minimal valid json without any rule keys',
-        true, setValidationRules({"schemaVersion": "0.11"}));
-    assert('minimal valid json with "empty" any rule keys',
-        true, setValidationRules({"schemaVersion": "0.11",
-            "mandatoryRules": {}, "immutableRules": {}, "contentRules": {}, "updateRules": {}}));
+function testConstraintsType() {
+    log(">>> Testing constraint 'type' key");
+    assert('False if "type" key  is missing',
+        false, constraintIsValid({}, null));
+    assert('False if "type" value is unknown',
+        false, constraintIsValid({"type": "UNKNOWN"}, null));
 }
 
-function testGetAllowedPropertyValues() {
-    log(">>> Testing getAllowedPropertyValues");
-    assert('undefined allowed properties if no EQUALS_ANY* constraint exist',
-        undefined, getAllowedPropertyValues("sometype", "number1", {"number1": 1}));
-    assert('allowed properties if (nullable) EQUALS_ANY content constraint exist',
-        ["one", "two", null], getAllowedPropertyValues("sometype", "someString", {"notRelevant": 1}, ["aaa"]));
-    assert('allowed properties if EQUALS_ANY_REF content constraint exist',
-        ["one", "two", "four", "six"], getAllowedPropertyValues("sometype", "someString",
-            {"stringArray": ["one", "two"], "stringArray2": ["three", "four", "five", "six", "seven"]}, ["bbb"]));
-    assert('allowed properties if EQUALS_ANY update constraint exist',
-        ["foo", "bar"], getAllowedPropertyValues("sometype", "someString", {"someString": "foo"}));
+function testEqualsConstraints() {
+    log(">>> Testing EQUALS_ANY constraints");
+    assert('Null EQUALS_ANY false',
+        false, constraintIsValid({"type": "EQUALS_ANY", "values": ["foo", "bar", "zoo"]}, null));
+    assert('Null EQUALS_ANY true',
+        true, constraintIsValid({"type": "EQUALS_ANY", "values": ["foo", "bar", "zoo"], "nullEqualsTo": true}, null));
+    assert('String EQUALS_ANY value',
+        true, constraintIsValid({"type": "EQUALS_ANY", "values": ["foo", "bar", "zoo"]}, "zoo"));
+    assert('String not EQUALS_ANY value',
+        false, constraintIsValid({"type": "EQUALS_ANY", "values": ["foo", "bar", "zoo"]}, "baz"));
+    assert('Date EQUALS_ANY value',
+        true, constraintIsValid({"type": "EQUALS_ANY", "values": ["1999-01-01T00:00:00Z", "2021-01-01T00:00:00Z"]},
+            "2021-01-01T00:00:00+00:00"));
+    assert('Date not EQUALS_ANY value',
+        false, constraintIsValid({"type": "EQUALS_ANY", "values": ["1999-01-01T00:00:00Z", "2021-01-01T00:00:00Z"]},
+            "3000-01-01T00:00:00Z"));
+
+    log(">>> Testing EQUALS_NONE constraints");
+    assert('String EQUALS_NONE value',
+        true, constraintIsValid({"type": "EQUALS_NONE", "values": ["foo", "bar", "zoo"]}, "baz"));
+    assert('String not EQUALS_NONE value',
+        false, constraintIsValid({"type": "EQUALS_NONE", "values": ["foo", "bar", "zoo"]}, "zoo"));
+    assert('Date EQUALS_NONE value',
+        true, constraintIsValid({"type": "EQUALS_NONE", "values": ["1999-01-01T00:00:00Z", "2021-01-01T00:00:00Z"]},
+            "3000-01-01T00:00:00Z"));
+    assert('Date not EQUALS_NONE value',
+        false, constraintIsValid({"type": "EQUALS_NONE", "values": ["1999-01-01T00:00:00Z", "2021-01-01T00:00:00Z"]},
+            "2021-01-01T00:00:00Z"));
 }
 
-function testIsPropertyMandatory() {
-    log(">>> Testing isPropertyMandatory");
-    assert('non-existing property is not mandatory',
-        false, isPropertyMandatory("sometype", "non-existing", sometypeObject));
-    assert('customer is mandatory ',
-        true, isPropertyMandatory("sometype", "customer", sometypeObject));
-    assert('customer.name is mandatory ',
-        true, isPropertyMandatory("sometype", "customer.name", sometypeObject));
-    assert('number1 is mandatory for permission "aaa"',
-        true, isPropertyMandatory("sometype", "number1", sometypeObject, ["aaa", "xxx"]));
-    assert('number1 is mandatory for permissions "bbb" and "aaa"',
-        true, isPropertyMandatory("sometype", "number1", sometypeObject, ["xxx", "bbb", "aaa"]));
-    assert('number1 is mandatory for permission "ccc"',
-        true, isPropertyMandatory("sometype", "number1", sometypeObject, ["ccc"]));
-    assert('number1 is mandatory for no (matching) permission',
-        true, isPropertyMandatory("sometype", "number1", sometypeObject, ["xxx"]));
-    assert('array with *-index is mandatory',
-        true, isPropertyMandatory("sometype", "stringArray[*]", sometypeObject));
-    assert('#distinct not allowed',
-        false, isPropertyMandatory("sometype", "stringArray[*]#distinct", sometypeObject));
+function testEqualsRefConstraints() {
+    log(">>> Testing EQUALS_ANY_REF constraints");
+    assert('Null EQUALS_ANY_REF false',
+        false, constraintIsValid({"type": "EQUALS_ANY_REF", "values": ["prop1"]}, null));
+    assert('Null EQUALS_ANY_REF true',
+        true, constraintIsValid({"type": "EQUALS_ANY_REF", "values": ["prop1"], "nullEqualsTo": true}, null));
+    assert('Value EQUALS_ANY_REF value',
+        true, constraintIsValid({"type": "EQUALS_ANY_REF", "values": ["prop1", "prop2[*]"]}, "zoo",
+            {"prop1": "val", "prop2": ["foo", "bar", "zoo"]}));
+    assert('Value not EQUALS_ANY_REF value',
+        false, constraintIsValid({"type": "EQUALS_ANY_REF", "values": ["prop1", "prop2[*]"]}, "xyz",
+            {"prop1": "val", "prop2": ["foo", "bar", "zoo"]}));
+    assert('Date EQUALS_ANY_REF date',
+        true, constraintIsValid({"type": "EQUALS_ANY_REF", "values": ["prop1", "prop2[*]"]}, "2022-01-01",
+            {"prop1": "1999-01-01", "prop2": ["2000-01-01", "2010-01-01", "2022-01-01"]}));
+    assert('Number EQUALS_ANY_REF number#sum',
+        true, constraintIsValid({"type": "EQUALS_ANY_REF", "values": ["prop1[*]#sum", "prop2[*]#sum"]}, 15,
+            {"prop1": [1, 2, 3], "prop2": [4, 5, 6]}));
+    assert('Number not EQUALS_ANY_REF number#sum',
+        false, constraintIsValid({"type": "EQUALS_ANY_REF", "values": ["prop1[*]#sum", "prop2[*]#sum"]}, 99,
+            {"prop1": [1, 2, 3], "prop2": [4, 5, 6]}));
+    assert('Boolean EQUALS_ANY_REF number#distinct',
+        true, constraintIsValid({"type": "EQUALS_ANY_REF", "values": ["prop1[*]#distinct"]}, true,
+            {"prop1": [1, 2, 3]}));
+    assert('Boolean not EQUALS_ANY_REF number#distinct',
+        false, constraintIsValid({"type": "EQUALS_ANY_REF", "values": ["prop1[*]#distinct"]}, true,
+            {"prop1": [1, 2, 2]}));
+
+    log(">>> Testing EQUALS_NONE_REF constraints");
+    assert('Value EQUALS_NONE_REF value',
+        true, constraintIsValid({"type": "EQUALS_NONE_REF", "values": ["prop1", "prop2[*]"]}, "xyz",
+            {"prop1": "val", "prop2": ["foo", "bar", "zoo"]}));
+    assert('Value not EQUALS_NONE_REF value',
+        false, constraintIsValid({"type": "EQUALS_NONE_REF", "values": ["prop1", "prop2[*]"]}, "zoo",
+            {"prop1": "val", "prop2": ["foo", "bar", "zoo"]}));
 }
+
+function testRegexConstraints() {
+    log(">>> Testing REGEX_ANY constraints");
+    assert('Null REGEX_ANY false',
+        false, constraintIsValid({"type": "REGEX_ANY", "values": ["^[0-7]+$"]}, null));
+    assert('Null REGEX_ANY true',
+        true, constraintIsValid({"type": "REGEX_ANY", "values": ["^[0-7]+$"], "nullEqualsTo": true}, null));
+    assert('String REGEX_ANY match',
+        true, constraintIsValid({"type": "REGEX_ANY", "values": ["nomatch", "^[fz]o{2}$"]}, "zoo"));
+    assert('String not REGEX_ANY match',
+        false, constraintIsValid({"type": "REGEX_ANY", "values": ["nomatch"]}, "zoo"));
+    assert('Number REGEX_ANY match',
+        true, constraintIsValid({"type": "REGEX_ANY", "values": ["nomatch", "^[0-7]+$"]}, 1234567));
+    assert('Number not REGEX_ANY match',
+        false, constraintIsValid({"type": "REGEX_ANY", "values": ["nomatch"]}, 1234567));
+
+    log(">>> Testing REGEX_NONE constraints");
+    assert('String REGEX_NONE match',
+        false, constraintIsValid({"type": "REGEX_NONE", "values": ["nomatch", "^[fz]o{2}$"]}, "zoo"));
+    assert('String none REGEX_NONE match',
+        true, constraintIsValid({"type": "REGEX_NONE", "values": ["nomatch"]}, "zoo"));
+    assert('Number REGEX_NONE match',
+        false, constraintIsValid({"type": "REGEX_NONE", "values": ["nomatch", "^[0-7]+$"]}, 1234567));
+    assert('Number none REGEX_NONE match',
+        true, constraintIsValid({"type": "REGEX_NONE", "values": ["nomatch"]}, 1234567));
+}
+
+function testSizeConstraints() {
+    log(">>> Testing SIZE constraints");
+    assert('Null SIZE false',
+        false, constraintIsValid({"type": "SIZE", "min": 1}, null));
+    assert('Null SIZE true',
+        true, constraintIsValid({"type": "SIZE", "min": 1, "nullEqualsTo": true}, null));
+    assert('Type property invalid',
+        false, constraintIsValid({"typ_": "SIZE"}, "Test"));
+    assert('Type value is invalid',
+        false, constraintIsValid({"type": "SIZE_"}, "Test"));
+    assert('Properties "min" and "max" are missing',
+        false, constraintIsValid({"type": "SIZE"}, "Test"));
+    assert('Properties "min" is not typeof "number"',
+        false, constraintIsValid({"type": "SIZE", "min": 'x'}, 123));
+    assert('Properties "max" is not typeof "number"',
+        false, constraintIsValid({"type": "SIZE", "max": '-1'}, 123));
+    assert('Number is not allowed',
+        false, constraintIsValid({"type": "SIZE", "min": 1}, 123));
+    assert('String should have min size',
+        true, constraintIsValid({"type": "SIZE", "min": 1}, "T"));
+    assert('String should have max size',
+        true, constraintIsValid({"type": "SIZE", "max": 10}, "Teststring"));
+    assert('String should have min and max size',
+        true, constraintIsValid({"type": "SIZE", "min": 1, "max": 10}, "Teststring"));
+    assert('String is to short',
+        false, constraintIsValid({"type": "SIZE", "min": 11}, "Teststring"));
+    assert('String is too long',
+        false, constraintIsValid({"type": "SIZE", "max": 9}, "Teststring"));
+    assert('Array should have min size',
+        true, constraintIsValid({"type": "SIZE", "min": 1}, [1]));
+    assert('Array should have max size',
+        true, constraintIsValid({"type": "SIZE", "max": 3}, [1, 2, 3]));
+    assert('Array is to short',
+        false, constraintIsValid({"type": "SIZE", "min": 2}, [1]));
+    assert('Array is to long',
+        false, constraintIsValid({"type": "SIZE", "max": 2}, [1, 2, 3]));
+    assert('Object should have min size',
+        true, constraintIsValid({"type": "SIZE", "min": 1}, {"one": 1, "two": 2}));
+    assert('Object should have max size',
+        true, constraintIsValid({"type": "SIZE", "max": 2}, {"one": 1, "two": 2}));
+    assert('Object is to short',
+        false, constraintIsValid({"type": "SIZE", "min": 3}, {"one": 1, "two": 2}));
+}
+
+function testRangeConstraints() {
+    log(">>> Testing RANGE constraints");
+    assert('Null RANGE false',
+        false, constraintIsValid({"type": "RANGE", "min": 1}, null));
+    assert('Null RANGE true',
+        true, constraintIsValid({"type": "RANGE", "min": 1, "nullEqualsTo": true}, null));
+    assert('Type property invalid',
+        false, constraintIsValid({"typ_": "RANGE"}, 1));
+    assert('Type value is invalid',
+        false, constraintIsValid({"type": "RANGE_"}, 1));
+    assert('Properties "min" and "max" are missing',
+        false, constraintIsValid({"type": "RANGE"}, 1));
+    assert('Properties "min" is not typeof "number"',
+        false, constraintIsValid({"type": "RANGE", "min": 'x'}, 123));
+    assert('Properties "max" is not typeof "number"',
+        false, constraintIsValid({"type": "RANGE", "max": '-1'}, 123));
+    assert('String is not allowed',
+        false, constraintIsValid({"type": "RANGE", "min": 1}, "String"));
+    assert('Date is not allowed',
+        false, constraintIsValid({"type": "RANGE", "min": 1}, new Date()));
+    assert('Array is not allowed',
+        false, constraintIsValid({"type": "RANGE", "min": 1}, [1, 2]));
+    assert('Object is not allowed',
+        false, constraintIsValid({"type": "RANGE", "min": 1}, {"one": 1, "two": 2}));
+    assert('Number should be <= min',
+        true, constraintIsValid({"type": "RANGE", "min": 1}, 1));
+    assert('Number should be >= max',
+        true, constraintIsValid({"type": "RANGE", "max": 2}, 2));
+    assert('Number is < min',
+        false, constraintIsValid({"type": "RANGE", "min": 2}, 1));
+    assert('Number is > max',
+        false, constraintIsValid({"type": "RANGE", "max": 1}, 2));
+}
+
+function testDateConstraints() {
+    const today = new Date();
+    const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth();
+    const currentDate = today.getDate();
+
+    log(">>> Testing FUTURE_DAYS constraints");
+    assert('Null FUTURE_DAYS false',
+        false, constraintIsValid({"type": "FUTURE_DAYS", "min": 0}, null));
+    assert('Null FUTURE_DAYS true',
+        true, constraintIsValid({"type": "FUTURE_DAYS", "min": 0, "nullEqualsTo": true}, null));
+    assert('Property "min" and "max" are missing',
+        false, constraintIsValid({"type": "FUTURE_DAYS"}, "3000-01-31"));
+    assert('FUTURE min 0 against now',
+        true, constraintIsValid({"type": "FUTURE_DAYS", "min": 0}, new Date().toISOString()));
+    assert('FUTURE min/max 0 against now',
+        true, constraintIsValid({"type": "FUTURE_DAYS", "min": 0, "max": 0}, new Date().toISOString()));
+    assert('FUTURE min 1 against today',
+        false, constraintIsValid({"type": "FUTURE_DAYS", "min": 1}, new Date().toISOString()));
+    assert('FUTURE min 1 against year 3000',
+        true, constraintIsValid({"type": "FUTURE_DAYS", "min": 1}, "3000-01-31"));
+    assert('FUTURE min 1 max 365000 against year 3000',
+        true, constraintIsValid({"type": "FUTURE_DAYS", "min": 1, "max": 365000}, "3000-01-31"));
+    assert('FUTURE min 1 max 1000 against year 3000',
+        false, constraintIsValid({"type": "FUTURE_DAYS", "min": 1, "max": 1000}, "3000-01-31"));
+
+    log(">>> Testing PAST_DAYS constraints");
+    assert('Null PAST_DAYS false',
+        false, constraintIsValid({"type": "PAST_DAYS", "min": 0}, null));
+    assert('Null PAST_DAYS true',
+        true, constraintIsValid({"type": "PAST_DAYS", "min": 0, "nullEqualsTo": true}, null));
+    assert('PAST min 0 against now',
+        true, constraintIsValid({"type": "PAST_DAYS", "min": 0}, new Date().toISOString()));
+    assert('PAST min/max 0 against now',
+        true, constraintIsValid({"type": "PAST_DAYS", "min": 0, "max": 0}, new Date().toISOString()));
+    assert('PAST min 1 against today',
+        false, constraintIsValid({"type": "PAST_DAYS", "min": 1}, new Date().toISOString()));
+    assert('PAST min 1 against year 2000',
+        true, constraintIsValid({"type": "PAST_DAYS", "min": 1}, "2020-01-01"));
+    assert('PAST min 10000 against year 2020',
+        false, constraintIsValid({"type": "PAST_DAYS", "min": 10000}, "2020-01-01"));
+    assert('PAST min 1 max 10000 against year 2020',
+        true, constraintIsValid({"type": "PAST_DAYS", "min": 1, "max": 10000}, "2020-01-01"));
+    assert('PAST min 1 max 1000 against year 2000',
+        false, constraintIsValid({"type": "PAST_DAYS", "min": 1, "max": 1000}, "2000-01-01"));
+
+    log(">>> Testing PERIOD_DAYS constraints");
+    assert('Null PERIOD_DAYS false',
+        false, constraintIsValid({"type": "PERIOD_DAYS", "min": 0}, null));
+    assert('Null PERIOD_DAYS true',
+        true, constraintIsValid({"type": "PERIOD_DAYS", "min": 0, "nullEqualsTo": true}, null));
+    assert('PERIOD min 0 against now',
+        true, constraintIsValid({"type": "PERIOD_DAYS", "min": 0}, new Date().toISOString()));
+    assert('PERIOD max 0 against now',
+        true, constraintIsValid({"type": "PERIOD_DAYS", "max": 0}, new Date().toISOString()));
+    assert('PERIOD min -365 max 365 against now - 365 days',
+        true, constraintIsValid({"type": "PERIOD_DAYS", "min": -365, "max": 365},
+            new Date(currentYear - 1, currentMonth, currentDate + 1).toISOString()));
+    assert('PERIOD min -365 max 365 against now + 365 days',
+        true, constraintIsValid({"type": "PERIOD_DAYS", "min": -365, "max": 365},
+            new Date(currentYear + 1, currentMonth, currentDate - 1).toISOString()));
+    assert('PERIOD min -365 max 365 against now - 2 years',
+        false, constraintIsValid({"type": "PERIOD_DAYS", "min": -365, "max": 365},
+            new Date(currentYear - 2, currentMonth, currentDate).toISOString()));
+    assert('PERIOD min -365 max 365 against now + 2 years',
+        false, constraintIsValid({"type": "PERIOD_DAYS", "min": -365, "max": 365},
+            new Date(currentYear + 2, currentMonth, currentDate).toISOString()));
+
+    log(">>> Testing YEAR_RANGE constraints");
+    assert('YEAR_RANGE: true if "min" do match absolute',
+        true, constraintIsValid({"type": "YEAR_RANGE", "min": 2023, "rangeType": "ABSOLUTE"}, '2023-01-01'));
+    assert('YEAR_RANGE: true if "max" do match absolute',
+        true, constraintIsValid({"type": "YEAR_RANGE", "max": 2023, "rangeType": "ABSOLUTE"}, '2023-01-01'));
+    assert('YEAR_RANGE: true if "min" and "max" do match absolute',
+        true, constraintIsValid({"type": "YEAR_RANGE", "min": 2023, "max": 2023, "rangeType": "ABSOLUTE"}, '2023-01-01'));
+    assert('YEAR_RANGE: false if "min" and "max" do not match absolute',
+        false, constraintIsValid({"type": "YEAR_RANGE", "min": 2024, "max": 2025, "rangeType": "ABSOLUTE"}, '2023-01-01'));
+    assert('YEAR_RANGE: true if "min" do match relative',
+        true, constraintIsValid({"type": "YEAR_RANGE", "min": -1, "rangeType": "RELATIVE"},
+            new Date(currentYear - 1, currentMonth, currentDate).toISOString()));
+    assert('YEAR_RANGE: true if "max" do match relative',
+        true, constraintIsValid({"type": "YEAR_RANGE", "max": 1, "rangeType": "RELATIVE"},
+            new Date(currentYear + 1, currentMonth, currentDate).toISOString()));
+    assert('YEAR_RANGE: true if "min" and "max" do match relative',
+        true, constraintIsValid({"type": "YEAR_RANGE", "min": 0, "max": 0, "rangeType": "RELATIVE"}, today.toISOString()));
+    assert('YEAR_RANGE: false if "min" and "max" do not match relative',
+        false, constraintIsValid({"type": "YEAR_RANGE", "min": 1, "max": 2, "rangeType": "RELATIVE"}, today.toISOString()));
+    assert('YEAR_RANGE: false if min and max are missing',
+        false, constraintIsValid({"type": "YEAR_RANGE", "rangeType": "ABSOLUTE"}, '2022-01-01'));
+    assert('YEAR_RANGE: false if rangeType is missing',
+        false, constraintIsValid({"type": "YEAR_RANGE", "min": 1, "max": 2}, '2022-01-01'));
+    assert('YEAR_RANGE: false if rangeType is invalid',
+        false, constraintIsValid({"type": "YEAR_RANGE", "min": 1, "max": 2, "rangeType": "INVALID"}, '2022-01-01'));
+    assert('YEAR_RANGE: null equals to false as default',
+        false, constraintIsValid({"type": "YEAR_RANGE", "min": 2000, "rangeType": "ABSOLUTE"}, null));
+    assert('YEAR_RANGE: null equals to false',
+        false, constraintIsValid({"type": "YEAR_RANGE", "min": 2000, "rangeType": "ABSOLUTE", "nullEqualsTo": false}, null));
+    assert('YEAR_RANGE: null equals to true',
+        true, constraintIsValid({"type": "YEAR_RANGE", "min": 2000, "rangeType": "ABSOLUTE", "nullEqualsTo": true}, null));
+}
+
+function testWeekdayConstraints() {
+    log(">>> Testing WEEKDAY_ANY constraints");
+    assert('Null WEEKDAY_ANY false',
+        false, constraintIsValid({"type": "WEEKDAY_ANY", "values": ["MONDAY"]}, null));
+    assert('Null WEEKDAY_ANY true',
+        true, constraintIsValid({"type": "WEEKDAY_ANY", "values": ["MONDAY"], "nullEqualsTo": true}, null));
+    assert('False if "values" is missing',
+        false, constraintIsValid({"type": "WEEKDAY_ANY"}, '2022-01-01'));
+    assert('False if "values" is not an array',
+        false, constraintIsValid({"type": "WEEKDAY_ANY", "values": {}}, '2022-01-01'));
+    assert('False if "values" is empty',
+        false, constraintIsValid({"type": "WEEKDAY_ANY", "values": []}, '2022-01-01'));
+    assert('False if "values" do not match',
+        false, constraintIsValid({"type": "WEEKDAY_ANY", "values": ["MONDAY"]}, '2022-01-01'));
+    assert('True if "values" do match',
+        true, constraintIsValid({"type": "WEEKDAY_ANY", "values": ["SATURDAY"]}, '2022-01-01'));
+    assert('True if date is null and "nullEqualsTo" is true',
+        true, constraintIsValid({"type": "WEEKDAY_ANY", "nullEqualsTo": true}, null));
+    assert('False if date is null and "nullEqualsTo" is false',
+        false, constraintIsValid({"type": "WEEKDAY_ANY", "nullEqualsTo": false}, null));
+    assert('False if date is null and "nullEqualsTo" default',
+        false, constraintIsValid({"type": "WEEKDAY_ANY"}, null));
+}
+
+function testQuarterConstraints() {
+    log(">>> Testing QUARTER_ANY constraints");
+    assert('Null QUARTER_ANY false',
+        false, constraintIsValid({"type": "QUARTER_ANY", "values": [3, 1]}, null));
+    assert('Null QUARTER_ANY true',
+        true, constraintIsValid({"type": "QUARTER_ANY", "values": [3, 1], "nullEqualsTo": true}, null));
+    assert('False if "values" is missing',
+        false, constraintIsValid({"type": "QUARTER_ANY"}, '2022-01-01'));
+    assert('False if "values" is not an array',
+        false, constraintIsValid({"type": "QUARTER_ANY", "values": {}}, '2022-01-01'));
+    assert('False if "values" is empty',
+        false, constraintIsValid({"type": "QUARTER_ANY", "values": []}, '2022-01-01'));
+    assert('True if "values" do match',
+        true, constraintIsValid({"type": "QUARTER_ANY", "values": [3, 1]}, '2022-01-01'));
+    assert('False if "values" do not match',
+        false, constraintIsValid({"type": "QUARTER_ANY", "values": [2, 3, 4]}, '2022-01-01'));
+    assert('True if date is null and "nullEqualsTo" is true',
+        true, constraintIsValid({"type": "QUARTER_ANY", "nullEqualsTo": true}, null));
+    assert('False if date is null and "nullEqualsTo" is false',
+        false, constraintIsValid({"type": "QUARTER_ANY", "nullEqualsTo": false}, null));
+    assert('False if date is null "nullEqualsTo" default',
+        false, constraintIsValid({"type": "QUARTER_ANY"}, null));
+}
+
+function testQuarterRefConstraints() {
+    log(">>> Testing QUARTER_ANY_REF constraints");
+    assert('Null QUARTER_ANY_REF false',
+        false, constraintIsValid({"type": "QUARTER_ANY_REF", "values": ["prop1"]}, null));
+    assert('Null QUARTER_ANY_REF true',
+        true, constraintIsValid({"type": "QUARTER_ANY_REF", "values": ["prop1"], "nullEqualsTo": true}, null));
+    assert('False if "values" is missing',
+        false, constraintIsValid({"type": "QUARTER_ANY_REF"}, '2022-01-01'));
+    assert('False if "values" is not an array',
+        false, constraintIsValid({"type": "QUARTER_ANY_REF", "values": {}}, '2022-01-01'));
+    assert('False if "values" is empty',
+        false, constraintIsValid({"type": "QUARTER_ANY_REF", "values": []}, '2022-01-01'));
+    assert('True if "values" do match',
+        true, constraintIsValid({"type": "QUARTER_ANY_REF", "values": ["prop1", "prop2[*]"]}, '2022-01-01',
+            {"prop1": 4, "prop2": [2, 1]}));
+    assert('False if "values" do not match',
+        false, constraintIsValid({"type": "QUARTER_ANY_REF", "values": ["prop1", "prop2[*]"]}, '2022-01-01',
+            {"prop1": 4, "prop2": [3, 2]}));
+    assert('True if date is null and "nullEqualsTo" is true',
+        true, constraintIsValid({"type": "QUARTER_ANY_REF", "nullEqualsTo": true}, null));
+    assert('False if date is null and "nullEqualsTo" is false',
+        false, constraintIsValid({"type": "QUARTER_ANY_REF", "nullEqualsTo": false}, null));
+    assert('False if date is null "nullEqualsTo" default',
+        false, constraintIsValid({"type": "QUARTER_ANY_REF"}, null));
+}
+
+function testYearAnyConstraints() {
+    log(">>> Testing YEAR_ANY constraints");
+    assert('Null YEAR_ANY false',
+        false, constraintIsValid({"type": "YEAR_ANY", "values": ["prop1"]}, null));
+    assert('Null YEAR_ANY true',
+        true, constraintIsValid({"type": "YEAR_ANY", "values": ["prop1"], "nullEqualsTo": true}, null));
+    assert('False if "values" is missing',
+        false, constraintIsValid({"type": "YEAR_ANY"}, '2022-01-01'));
+    assert('False if "values" is not an array',
+        false, constraintIsValid({"type": "YEAR_ANY", "values": {}}, '2022-01-01'));
+    assert('False if "values" is empty',
+        false, constraintIsValid({"type": "YEAR_ANY", "values": []}, '2022-01-01'));
+    assert('True if "values" do match',
+        true, constraintIsValid({"type": "YEAR_ANY", "values": [2023, 2022]}, '2022-01-01'));
+    assert('False if "values" do not match',
+        false, constraintIsValid({"type": "YEAR_ANY", "values": [2023, 2021]}, '2022-01-01'));
+    assert('True if date is null and "nullEqualsTo" is true',
+        true, constraintIsValid({"type": "YEAR_ANY", "nullEqualsTo": true}, null));
+    assert('False if date is null and "nullEqualsTo" is false',
+        false, constraintIsValid({"type": "YEAR_ANY", "nullEqualsTo": false}, null));
+    assert('False if date is null "nullEqualsTo" default',
+        false, constraintIsValid({"type": "YEAR_ANY"}, null));
+}
+
+function testYearAnyRefConstraints() {
+    log(">>> Testing YEAR_ANY_REF constraints");
+    assert('Null YEAR_ANY_REF false',
+        false, constraintIsValid({"type": "YEAR_ANY_REF", "values": ["prop1"]}, null));
+    assert('Null YEAR_ANY_REF true',
+        true, constraintIsValid({"type": "YEAR_ANY_REF", "values": ["prop1"], "nullEqualsTo": true}, null));
+    assert('False if "values" is missing',
+        false, constraintIsValid({"type": "YEAR_ANY_REF"}, '2022-01-01'));
+    assert('False if "values" is not an array',
+        false, constraintIsValid({"type": "YEAR_ANY_REF", "values": {}}, '2022-01-01'));
+    assert('False if "values" is empty',
+        false, constraintIsValid({"type": "YEAR_ANY_REF", "values": []}, '2022-01-01'));
+    assert('True if "values" do match',
+        true, constraintIsValid({"type": "YEAR_ANY_REF", "values": ["prop1", "prop2[*]"]}, '2022-01-01',
+            {"prop1": 2024, "prop2": [2021, 2022]}));
+    assert('False if "values" do not match',
+        false, constraintIsValid({"type": "YEAR_ANY_REF", "values": ["prop1", "prop2[*]"]}, '2022-01-01',
+            {"prop1": 2024, "prop2": [2021, 2023]}));
+    assert('True if date is null and "nullEqualsTo" is true',
+        true, constraintIsValid({"type": "YEAR_ANY_REF", "nullEqualsTo": true}, null));
+    assert('False if date is null and "nullEqualsTo" is false',
+        false, constraintIsValid({"type": "YEAR_ANY_REF", "nullEqualsTo": false}, null));
+    assert('False if date is null "nullEqualsTo" default',
+        false, constraintIsValid({"type": "YEAR_ANY_REF"}, null));
+}
+
+function testValueChangedAndUnchangedConstraints() {
+    log(">>> Testing VALUE_CHANGED constraint");
+    assert('False if string has not changed',
+        false, constraintIsValid({"type": "VALUE_CHANGED"}, 'foo', 'foo'));
+    assert('True if string has changed',
+        true, constraintIsValid({"type": "VALUE_CHANGED"}, 'foo', 'bar'));
+    assert('False if array elements have not changed',
+        false, constraintIsValid({"type": "VALUE_CHANGED"}, [1, 2], [1, 2]));
+    assert('True if array elements have changed',
+        true, constraintIsValid({"type": "VALUE_CHANGED"}, [1, 2], [2, 1]));
+    assert('False if object has not changed except the order of the attributes',
+        false, constraintIsValid({"type": "VALUE_CHANGED"}, {'a': 1, 'b': [2, 3]}, {'b': [2, 3], 'a': 1}));
+    assert('True if sequence of array elements of an object attribute has changed',
+        true, constraintIsValid({"type": "VALUE_CHANGED"}, {'a': 1, 'b': [2, 3]}, {'b': [3, 2], 'a': 1}));
+
+    log(">>> Testing VALUE_UNCHANGED constraint");
+    assert('True if string has not changed',
+        true, constraintIsValid({"type": "VALUE_UNCHANGED"}, 'foo', 'foo'));
+    assert('False if string has changed',
+        false, constraintIsValid({"type": "VALUE_UNCHANGED"}, 'foo', 'bar'));
+    assert('True if array elements have not changed',
+        true, constraintIsValid({"type": "VALUE_UNCHANGED"}, [1, 2], [1, 2]));
+    assert('False if array elements have changed',
+        false, constraintIsValid({"type": "VALUE_UNCHANGED"}, [1, 2], [2, 1]));
+    assert('True if object has not changed except the order of the attributes',
+        true, constraintIsValid({"type": "VALUE_UNCHANGED"}, {'a': 1, 'b': [2, 3]}, {'b': [2, 3], 'a': 1}));
+    assert('False if sequence of array elements of an object attribute has changed',
+        false, constraintIsValid({"type": "VALUE_UNCHANGED"}, {'a': 1, 'b': [2, 3]}, {'b': [3, 2], 'a': 1}));
+}
+
 
 function testMandatoryRules() {
     log(">>> Testing validateMandatoryPropertyRules");
@@ -315,406 +689,39 @@ function testUpdateRules() {
         [], validateUpdatePropertyRules("sometype", "number2", {"number2": 1}, {"number2": 3}, ["bbb"]));
 }
 
-function testEqualsConstraints() {
-    log(">>> Testing equalsConstraintIsMet");
-    assert('Null EQUALS_ANY false',
-        false, constraintIsValid({"type": "EQUALS_ANY", "values": ["foo", "bar", "zoo"]}, null));
-    assert('Null EQUALS_ANY true',
-        true, constraintIsValid({"type": "EQUALS_ANY", "values": ["foo", "bar", "zoo"], "nullEqualsTo": true}, null));
-    assert('String EQUALS_ANY value',
-        true, constraintIsValid({"type": "EQUALS_ANY", "values": ["foo", "bar", "zoo"]}, "zoo"));
-    assert('String not EQUALS_ANY value',
-        false, constraintIsValid({"type": "EQUALS_ANY", "values": ["foo", "bar", "zoo"]}, "baz"));
-    assert('Date EQUALS_ANY value',
-        true, constraintIsValid({"type": "EQUALS_ANY", "values": ["1999-01-01T00:00:00Z", "2021-01-01T00:00:00Z"]},
-            "2021-01-01T00:00:00+00:00"));
-    assert('Date not EQUALS_ANY value',
-        false, constraintIsValid({"type": "EQUALS_ANY", "values": ["1999-01-01T00:00:00Z", "2021-01-01T00:00:00Z"]},
-            "3000-01-01T00:00:00Z"));
-    assert('String EQUALS_NONE value',
-        true, constraintIsValid({"type": "EQUALS_NONE", "values": ["foo", "bar", "zoo"]}, "baz"));
-    assert('String not EQUALS_NONE value',
-        false, constraintIsValid({"type": "EQUALS_NONE", "values": ["foo", "bar", "zoo"]}, "zoo"));
-    assert('Date EQUALS_NONE value',
-        true, constraintIsValid({"type": "EQUALS_NONE", "values": ["1999-01-01T00:00:00Z", "2021-01-01T00:00:00Z"]},
-            "3000-01-01T00:00:00Z"));
-    assert('Date not EQUALS_NONE value',
-        false, constraintIsValid({"type": "EQUALS_NONE", "values": ["1999-01-01T00:00:00Z", "2021-01-01T00:00:00Z"]},
-            "2021-01-01T00:00:00Z"));
+function testIsPropertyMandatory() {
+    log(">>> Testing isPropertyMandatory");
+    assert('non-existing property is not mandatory',
+        false, isPropertyMandatory("sometype", "non-existing", sometypeObject));
+    assert('customer is mandatory ',
+        true, isPropertyMandatory("sometype", "customer", sometypeObject));
+    assert('customer.name is mandatory ',
+        true, isPropertyMandatory("sometype", "customer.name", sometypeObject));
+    assert('number1 is mandatory for permission "aaa"',
+        true, isPropertyMandatory("sometype", "number1", sometypeObject, ["aaa", "xxx"]));
+    assert('number1 is mandatory for permissions "bbb" and "aaa"',
+        true, isPropertyMandatory("sometype", "number1", sometypeObject, ["xxx", "bbb", "aaa"]));
+    assert('number1 is mandatory for permission "ccc"',
+        true, isPropertyMandatory("sometype", "number1", sometypeObject, ["ccc"]));
+    assert('number1 is mandatory for no (matching) permission',
+        true, isPropertyMandatory("sometype", "number1", sometypeObject, ["xxx"]));
+    assert('array with *-index is mandatory',
+        true, isPropertyMandatory("sometype", "stringArray[*]", sometypeObject));
+    assert('#distinct not allowed',
+        false, isPropertyMandatory("sometype", "stringArray[*]#distinct", sometypeObject));
 }
 
-function testEqualsRefConstraints() {
-    log(">>> Testing equalsRefConstraintIsMet");
-    assert('Null EQUALS_ANY_REF false',
-        false, constraintIsValid({"type": "EQUALS_ANY_REF", "values": ["prop1"]}, null));
-    assert('Null EQUALS_ANY_REF true',
-        true, constraintIsValid({"type": "EQUALS_ANY_REF", "values": ["prop1"], "nullEqualsTo": true}, null));
-    assert('Value EQUALS_ANY_REF value',
-        true, constraintIsValid({"type": "EQUALS_ANY_REF", "values": ["prop1", "prop2[*]"]}, "zoo",
-            {"prop1": "val", "prop2": ["foo", "bar", "zoo"]}));
-    assert('Value not EQUALS_ANY_REF value',
-        false, constraintIsValid({"type": "EQUALS_ANY_REF", "values": ["prop1", "prop2[*]"]}, "xyz",
-            {"prop1": "val", "prop2": ["foo", "bar", "zoo"]}));
-    assert('Value EQUALS_NONE_REF value',
-        true, constraintIsValid({"type": "EQUALS_NONE_REF", "values": ["prop1", "prop2[*]"]}, "xyz",
-            {"prop1": "val", "prop2": ["foo", "bar", "zoo"]}));
-    assert('Value not EQUALS_NONE_REF value',
-        false, constraintIsValid({"type": "EQUALS_NONE_REF", "values": ["prop1", "prop2[*]"]}, "zoo",
-            {"prop1": "val", "prop2": ["foo", "bar", "zoo"]}));
-    assert('Date EQUALS_ANY_REF date',
-        true, constraintIsValid({"type": "EQUALS_ANY_REF", "values": ["prop1", "prop2[*]"]}, "2022-01-01",
-            {"prop1": "1999-01-01", "prop2": ["2000-01-01", "2010-01-01", "2022-01-01"]}));
-    assert('Number EQUALS_ANY_REF number#sum',
-        true, constraintIsValid({"type": "EQUALS_ANY_REF", "values": ["prop1[*]#sum", "prop2[*]#sum"]}, 15,
-            {"prop1": [1, 2, 3], "prop2": [4, 5, 6]}));
-    assert('Number not EQUALS_ANY_REF number#sum',
-        false, constraintIsValid({"type": "EQUALS_ANY_REF", "values": ["prop1[*]#sum", "prop2[*]#sum"]}, 99,
-            {"prop1": [1, 2, 3], "prop2": [4, 5, 6]}));
-    assert('Boolean EQUALS_ANY_REF number#distinct',
-        true, constraintIsValid({"type": "EQUALS_ANY_REF", "values": ["prop1[*]#distinct"]}, true,
-            {"prop1": [1, 2, 3]}));
-    assert('Boolean not EQUALS_ANY_REF number#distinct',
-        false, constraintIsValid({"type": "EQUALS_ANY_REF", "values": ["prop1[*]#distinct"]}, true,
-            {"prop1": [1, 2, 2]}));
-}
-
-function testRegexConstraints() {
-    log(">>> Testing regexConstraintIsMet");
-    assert('Null REGEX_ANY false',
-        false, constraintIsValid({"type": "REGEX_ANY", "values": ["^[0-7]+$"]}, null));
-    assert('Null REGEX_ANY true',
-        true, constraintIsValid({"type": "REGEX_ANY", "values": ["^[0-7]+$"], "nullEqualsTo": true}, null));
-    assert('String REGEX_ANY match',
-        true, constraintIsValid({"type": "REGEX_ANY", "values": ["nomatch", "^[fz]o{2}$"]}, "zoo"));
-    assert('String not REGEX_ANY match',
-        false, constraintIsValid({"type": "REGEX_ANY", "values": ["nomatch"]}, "zoo"));
-    assert('Number REGEX_ANY match',
-        true, constraintIsValid({"type": "REGEX_ANY", "values": ["nomatch", "^[0-7]+$"]}, 1234567));
-    assert('Number not REGEX_ANY match',
-        false, constraintIsValid({"type": "REGEX_ANY", "values": ["nomatch"]}, 1234567));
-
-    assert('String REGEX_NONE match',
-        false, constraintIsValid({"type": "REGEX_NONE", "values": ["nomatch", "^[fz]o{2}$"]}, "zoo"));
-    assert('String none REGEX_NONE match',
-        true, constraintIsValid({"type": "REGEX_NONE", "values": ["nomatch"]}, "zoo"));
-    assert('Number REGEX_NONE match',
-        false, constraintIsValid({"type": "REGEX_NONE", "values": ["nomatch", "^[0-7]+$"]}, 1234567));
-    assert('Number none REGEX_NONE match',
-        true, constraintIsValid({"type": "REGEX_NONE", "values": ["nomatch"]}, 1234567));
-}
-
-function testSizeConstraints() {
-    log(">>> Testing sizeConstraintIsMet");
-    assert('Null SIZE false',
-        false, constraintIsValid({"type": "SIZE", "min": 1}, null));
-    assert('Null SIZE true',
-        true, constraintIsValid({"type": "SIZE", "min": 1, "nullEqualsTo": true}, null));
-    assert('Type property invalid',
-        false, constraintIsValid({"typ_": "SIZE"}, "Test"));
-    assert('Type value is invalid',
-        false, constraintIsValid({"type": "SIZE_"}, "Test"));
-    assert('Properties "min" and "max" are missing',
-        false, constraintIsValid({"type": "SIZE"}, "Test"));
-    assert('Properties "min" is not typeof "number"',
-        false, constraintIsValid({"type": "SIZE", "min": 'x'}, 123));
-    assert('Properties "max" is not typeof "number"',
-        false, constraintIsValid({"type": "SIZE", "max": '-1'}, 123));
-    assert('Number is not allowed',
-        false, constraintIsValid({"type": "SIZE", "min": 1}, 123));
-    assert('String should have min size',
-        true, constraintIsValid({"type": "SIZE", "min": 1}, "T"));
-    assert('String should have max size',
-        true, constraintIsValid({"type": "SIZE", "max": 10}, "Teststring"));
-    assert('String should have min and max size',
-        true, constraintIsValid({"type": "SIZE", "min": 1, "max": 10}, "Teststring"));
-    assert('String is to short',
-        false, constraintIsValid({"type": "SIZE", "min": 11}, "Teststring"));
-    assert('String is too long',
-        false, constraintIsValid({"type": "SIZE", "max": 9}, "Teststring"));
-    assert('Array should have min size',
-        true, constraintIsValid({"type": "SIZE", "min": 1}, [1]));
-    assert('Array should have max size',
-        true, constraintIsValid({"type": "SIZE", "max": 3}, [1, 2, 3]));
-    assert('Array is to short',
-        false, constraintIsValid({"type": "SIZE", "min": 2}, [1]));
-    assert('Array is to long',
-        false, constraintIsValid({"type": "SIZE", "max": 2}, [1, 2, 3]));
-    assert('Object should have min size',
-        true, constraintIsValid({"type": "SIZE", "min": 1}, {"one": 1, "two": 2}));
-    assert('Object should have max size',
-        true, constraintIsValid({"type": "SIZE", "max": 2}, {"one": 1, "two": 2}));
-    assert('Object is to short',
-        false, constraintIsValid({"type": "SIZE", "min": 3}, {"one": 1, "two": 2}));
-}
-
-function testRangeConstraints() {
-    log(">>> Testing rangeConstraintIsMet");
-    assert('Null RANGE false',
-        false, constraintIsValid({"type": "RANGE", "min": 1}, null));
-    assert('Null RANGE true',
-        true, constraintIsValid({"type": "RANGE", "min": 1, "nullEqualsTo": true}, null));
-    assert('Type property invalid',
-        false, constraintIsValid({"typ_": "RANGE"}, 1));
-    assert('Type value is invalid',
-        false, constraintIsValid({"type": "RANGE_"}, 1));
-    assert('Properties "min" and "max" are missing',
-        false, constraintIsValid({"type": "RANGE"}, 1));
-    assert('Properties "min" is not typeof "number"',
-        false, constraintIsValid({"type": "RANGE", "min": 'x'}, 123));
-    assert('Properties "max" is not typeof "number"',
-        false, constraintIsValid({"type": "RANGE", "max": '-1'}, 123));
-    assert('String is not allowed',
-        false, constraintIsValid({"type": "RANGE", "min": 1}, "String"));
-    assert('Date is not allowed',
-        false, constraintIsValid({"type": "RANGE", "min": 1}, new Date()));
-    assert('Array is not allowed',
-        false, constraintIsValid({"type": "RANGE", "min": 1}, [1, 2]));
-    assert('Object is not allowed',
-        false, constraintIsValid({"type": "RANGE", "min": 1}, {"one": 1, "two": 2}));
-    assert('Number should be <= min',
-        true, constraintIsValid({"type": "RANGE", "min": 1}, 1));
-    assert('Number should be >= max',
-        true, constraintIsValid({"type": "RANGE", "max": 2}, 2));
-    assert('Number is < min',
-        false, constraintIsValid({"type": "RANGE", "min": 2}, 1));
-    assert('Number is > max',
-        false, constraintIsValid({"type": "RANGE", "max": 1}, 2));
-}
-
-function testDateConstraints() {
-    log(">>> Testing dateConstraintIsMet");
-    const currentYear = new Date().getFullYear();
-    const currentMonth = new Date().getMonth();
-    const currentDate = new Date().getDate();
-
-    assert('Null FUTURE_DAYS false',
-        false, constraintIsValid({"type": "FUTURE_DAYS", "min": 0}, null));
-    assert('Null FUTURE_DAYS true',
-        true, constraintIsValid({"type": "FUTURE_DAYS", "min": 0, "nullEqualsTo": true}, null));
-    assert('Property "min" and "max" are missing',
-        false, constraintIsValid({"type": "FUTURE_DAYS"}, "3000-01-31"));
-
-    assert('FUTURE min 0 against now',
-        true, constraintIsValid({"type": "FUTURE_DAYS", "min": 0}, new Date().toISOString()));
-    assert('FUTURE min/max 0 against now',
-        true, constraintIsValid({"type": "FUTURE_DAYS", "min": 0, "max": 0}, new Date().toISOString()));
-    assert('FUTURE min 1 against today',
-        false, constraintIsValid({"type": "FUTURE_DAYS", "min": 1}, new Date().toISOString()));
-    assert('FUTURE min 1 against year 3000',
-        true, constraintIsValid({"type": "FUTURE_DAYS", "min": 1}, "3000-01-31"));
-    assert('FUTURE min 1 max 365000 against year 3000',
-        true, constraintIsValid({"type": "FUTURE_DAYS", "min": 1, "max": 365000}, "3000-01-31"));
-    assert('FUTURE min 1 max 1000 against year 3000',
-        false, constraintIsValid({"type": "FUTURE_DAYS", "min": 1, "max": 1000}, "3000-01-31"));
-
-    assert('Null PAST_DAYS false',
-        false, constraintIsValid({"type": "PAST_DAYS", "min": 0}, null));
-    assert('Null PAST_DAYS true',
-        true, constraintIsValid({"type": "PAST_DAYS", "min": 0, "nullEqualsTo": true}, null));
-    assert('PAST min 0 against now',
-        true, constraintIsValid({"type": "PAST_DAYS", "min": 0}, new Date().toISOString()));
-    assert('PAST min/max 0 against now',
-        true, constraintIsValid({"type": "PAST_DAYS", "min": 0, "max": 0}, new Date().toISOString()));
-    assert('PAST min 1 against today',
-        false, constraintIsValid({"type": "PAST_DAYS", "min": 1}, new Date().toISOString()));
-    assert('PAST min 1 against year 2000',
-        true, constraintIsValid({"type": "PAST_DAYS", "min": 1}, "2020-01-01"));
-    assert('PAST min 10000 against year 2020',
-        false, constraintIsValid({"type": "PAST_DAYS", "min": 10000}, "2020-01-01"));
-    assert('PAST min 1 max 10000 against year 2020',
-        true, constraintIsValid({"type": "PAST_DAYS", "min": 1, "max": 10000}, "2020-01-01"));
-    assert('PAST min 1 max 1000 against year 2000',
-        false, constraintIsValid({"type": "PAST_DAYS", "min": 1, "max": 1000}, "2000-01-01"));
-
-    assert('Null PERIOD_DAYS false',
-        false, constraintIsValid({"type": "PERIOD_DAYS", "min": 0}, null));
-    assert('Null PERIOD_DAYS true',
-        true, constraintIsValid({"type": "PERIOD_DAYS", "min": 0, "nullEqualsTo": true}, null));
-    assert('PERIOD min 0 against now',
-        true, constraintIsValid({"type": "PERIOD_DAYS", "min": 0}, new Date().toISOString()));
-    assert('PERIOD max 0 against now',
-        true, constraintIsValid({"type": "PERIOD_DAYS", "max": 0}, new Date().toISOString()));
-    assert('PERIOD min -365 max 365 against now - 365 days',
-        true, constraintIsValid({"type": "PERIOD_DAYS", "min": -365, "max": 365},
-            new Date(currentYear - 1, currentMonth, currentDate + 1).toISOString()));
-    assert('PERIOD min -365 max 365 against now + 365 days',
-        true, constraintIsValid({"type": "PERIOD_DAYS", "min": -365, "max": 365},
-            new Date(currentYear + 1, currentMonth, currentDate - 1).toISOString()));
-    assert('PERIOD min -365 max 365 against now - 2 years',
-        false, constraintIsValid({"type": "PERIOD_DAYS", "min": -365, "max": 365},
-            new Date(currentYear - 2, currentMonth, currentDate).toISOString()));
-    assert('PERIOD min -365 max 365 against now + 2 years',
-        false, constraintIsValid({"type": "PERIOD_DAYS", "min": -365, "max": 365},
-            new Date(currentYear + 2, currentMonth, currentDate).toISOString()));
-}
-
-function testWeekdayConstraints() {
-    log(">>> Testing WEEKDAY_ANY constraints");
-    assert('Null WEEKDAY_ANY false',
-        false, constraintIsValid({"type": "WEEKDAY_ANY", "values": ["MONDAY"]}, null));
-    assert('Null WEEKDAY_ANY true',
-        true, constraintIsValid({"type": "WEEKDAY_ANY", "values": ["MONDAY"], "nullEqualsTo": true}, null));
-    assert('False if "values" is missing',
-        false, constraintIsValid({"type": "WEEKDAY_ANY"}, '2022-01-01'));
-    assert('False if "values" is not an array',
-        false, constraintIsValid({"type": "WEEKDAY_ANY", "values": {}}, '2022-01-01'));
-    assert('False if "values" is empty',
-        false, constraintIsValid({"type": "WEEKDAY_ANY", "values": []}, '2022-01-01'));
-    assert('False if "values" do not match',
-        false, constraintIsValid({"type": "WEEKDAY_ANY", "values": ["MONDAY"]}, '2022-01-01'));
-    assert('True if "values" do match',
-        true, constraintIsValid({"type": "WEEKDAY_ANY", "values": ["SATURDAY"]}, '2022-01-01'));
-    assert('True if date is null and "nullEqualsTo" is true',
-        true, constraintIsValid({"type": "WEEKDAY_ANY", "nullEqualsTo": true}, null));
-    assert('False if date is null and "nullEqualsTo" is false',
-        false, constraintIsValid({"type": "WEEKDAY_ANY", "nullEqualsTo": false}, null));
-    assert('False if date is null and "nullEqualsTo" default',
-        false, constraintIsValid({"type": "WEEKDAY_ANY"}, null));
-}
-
-function testQuarterConstraints() {
-    log(">>> Testing QUARTER_ANY constraints");
-    assert('Null QUARTER_ANY false',
-        false, constraintIsValid({"type": "QUARTER_ANY", "values": [3, 1]}, null));
-    assert('Null QUARTER_ANY true',
-        true, constraintIsValid({"type": "QUARTER_ANY", "values": [3, 1], "nullEqualsTo": true}, null));
-    assert('False if "values" is missing',
-        false, constraintIsValid({"type": "QUARTER_ANY"}, '2022-01-01'));
-    assert('False if "values" is not an array',
-        false, constraintIsValid({"type": "QUARTER_ANY", "values": {}}, '2022-01-01'));
-    assert('False if "values" is empty',
-        false, constraintIsValid({"type": "QUARTER_ANY", "values": []}, '2022-01-01'));
-    assert('True if "values" do match',
-        true, constraintIsValid({"type": "QUARTER_ANY", "values": [3, 1]}, '2022-01-01'));
-    assert('False if "values" do not match',
-        false, constraintIsValid({"type": "QUARTER_ANY", "values": [2, 3, 4]}, '2022-01-01'));
-    assert('True if date is null and "nullEqualsTo" is true',
-        true, constraintIsValid({"type": "QUARTER_ANY", "nullEqualsTo": true}, null));
-    assert('False if date is null and "nullEqualsTo" is false',
-        false, constraintIsValid({"type": "QUARTER_ANY", "nullEqualsTo": false}, null));
-    assert('False if date is null "nullEqualsTo" default',
-        false, constraintIsValid({"type": "QUARTER_ANY"}, null));
-}
-
-function testQuarterRefConstraints() {
-    log(">>> Testing QUARTER_ANY_REF constraints");
-    assert('Null QUARTER_ANY_REF false',
-        false, constraintIsValid({"type": "QUARTER_ANY_REF", "values": ["prop1"]}, null));
-    assert('Null QUARTER_ANY_REF true',
-        true, constraintIsValid({"type": "QUARTER_ANY_REF", "values": ["prop1"], "nullEqualsTo": true}, null));
-    assert('False if "values" is missing',
-        false, constraintIsValid({"type": "QUARTER_ANY_REF"}, '2022-01-01'));
-    assert('False if "values" is not an array',
-        false, constraintIsValid({"type": "QUARTER_ANY_REF", "values": {}}, '2022-01-01'));
-    assert('False if "values" is empty',
-        false, constraintIsValid({"type": "QUARTER_ANY_REF", "values": []}, '2022-01-01'));
-    assert('True if "values" do match',
-        true, constraintIsValid({"type": "QUARTER_ANY_REF", "values": ["prop1", "prop2[*]"]}, '2022-01-01',
-            {"prop1": 4, "prop2": [2, 1]}));
-    assert('False if "values" do not match',
-        false, constraintIsValid({"type": "QUARTER_ANY_REF", "values": ["prop1", "prop2[*]"]}, '2022-01-01',
-            {"prop1": 4, "prop2": [3, 2]}));
-    assert('True if date is null and "nullEqualsTo" is true',
-        true, constraintIsValid({"type": "QUARTER_ANY_REF", "nullEqualsTo": true}, null));
-    assert('False if date is null and "nullEqualsTo" is false',
-        false, constraintIsValid({"type": "QUARTER_ANY_REF", "nullEqualsTo": false}, null));
-    assert('False if date is null "nullEqualsTo" default',
-        false, constraintIsValid({"type": "QUARTER_ANY_REF"}, null));
-}
-
-function testYearConstraints() {
-    log(">>> Testing YEAR_ANY constraints");
-    assert('Null YEAR_ANY false',
-        false, constraintIsValid({"type": "YEAR_ANY", "values": ["prop1"]}, null));
-    assert('Null YEAR_ANY true',
-        true, constraintIsValid({"type": "YEAR_ANY", "values": ["prop1"], "nullEqualsTo": true}, null));
-    assert('False if "values" is missing',
-        false, constraintIsValid({"type": "YEAR_ANY"}, '2022-01-01'));
-    assert('False if "values" is not an array',
-        false, constraintIsValid({"type": "YEAR_ANY", "values": {}}, '2022-01-01'));
-    assert('False if "values" is empty',
-        false, constraintIsValid({"type": "YEAR_ANY", "values": []}, '2022-01-01'));
-    assert('True if "values" do match',
-        true, constraintIsValid({"type": "YEAR_ANY", "values": [2023, 2022]}, '2022-01-01'));
-    assert('False if "values" do not match',
-        false, constraintIsValid({"type": "YEAR_ANY", "values": [2023, 2021]}, '2022-01-01'));
-    assert('True if date is null and "nullEqualsTo" is true',
-        true, constraintIsValid({"type": "YEAR_ANY", "nullEqualsTo": true}, null));
-    assert('False if date is null and "nullEqualsTo" is false',
-        false, constraintIsValid({"type": "YEAR_ANY", "nullEqualsTo": false}, null));
-    assert('False if date is null "nullEqualsTo" default',
-        false, constraintIsValid({"type": "YEAR_ANY"}, null));
-}
-
-function testYearRefConstraints() {
-    log(">>> Testing YEAR_ANY_REF constraints");
-    assert('Null YEAR_ANY_REF false',
-        false, constraintIsValid({"type": "YEAR_ANY_REF", "values": ["prop1"]}, null));
-    assert('Null YEAR_ANY_REF true',
-        true, constraintIsValid({"type": "YEAR_ANY_REF", "values": ["prop1"], "nullEqualsTo": true}, null));
-    assert('False if "values" is missing',
-        false, constraintIsValid({"type": "YEAR_ANY_REF"}, '2022-01-01'));
-    assert('False if "values" is not an array',
-        false, constraintIsValid({"type": "YEAR_ANY_REF", "values": {}}, '2022-01-01'));
-    assert('False if "values" is empty',
-        false, constraintIsValid({"type": "YEAR_ANY_REF", "values": []}, '2022-01-01'));
-    assert('True if "values" do match',
-        true, constraintIsValid({"type": "YEAR_ANY_REF", "values": ["prop1", "prop2[*]"]}, '2022-01-01',
-            {"prop1": 2024, "prop2": [2021, 2022]}));
-    assert('False if "values" do not match',
-        false, constraintIsValid({"type": "YEAR_ANY_REF", "values": ["prop1", "prop2[*]"]}, '2022-01-01',
-            {"prop1": 2024, "prop2": [2021, 2023]}));
-    assert('True if date is null and "nullEqualsTo" is true',
-        true, constraintIsValid({"type": "YEAR_ANY_REF", "nullEqualsTo": true}, null));
-    assert('False if date is null and "nullEqualsTo" is false',
-        false, constraintIsValid({"type": "YEAR_ANY_REF", "nullEqualsTo": false}, null));
-    assert('False if date is null "nullEqualsTo" default',
-        false, constraintIsValid({"type": "YEAR_ANY_REF"}, null));
-}
-
-function testValueChangedAndUnchangedConstraints() {
-    log(">>> Testing VALUE_CHANGED constraint");
-    assert('False if string has not changed',
-        false, constraintIsValid({"type": "VALUE_CHANGED"}, 'foo', 'foo'));
-    assert('True if string has changed',
-        true, constraintIsValid({"type": "VALUE_CHANGED"}, 'foo', 'bar'));
-    assert('False if array elements have not changed',
-        false, constraintIsValid({"type": "VALUE_CHANGED"}, [1, 2], [1, 2]));
-    assert('True if array elements have changed',
-        true, constraintIsValid({"type": "VALUE_CHANGED"}, [1, 2], [2, 1]));
-    assert('False if object has not changed except the order of the attributes',
-        false, constraintIsValid({"type": "VALUE_CHANGED"}, {'a': 1, 'b': [2, 3]}, {'b': [2, 3], 'a': 1}));
-    assert('True if sequence of array elements of an object attribute has changed',
-        true, constraintIsValid({"type": "VALUE_CHANGED"}, {'a': 1, 'b': [2, 3]}, {'b': [3, 2], 'a': 1}));
-
-    log(">>> Testing VALUE_UNCHANGED constraint");
-    assert('True if string has not changed',
-        true, constraintIsValid({"type": "VALUE_UNCHANGED"}, 'foo', 'foo'));
-    assert('False if string has changed',
-        false, constraintIsValid({"type": "VALUE_UNCHANGED"}, 'foo', 'bar'));
-    assert('True if array elements have not changed',
-        true, constraintIsValid({"type": "VALUE_UNCHANGED"}, [1, 2], [1, 2]));
-    assert('False if array elements have changed',
-        false, constraintIsValid({"type": "VALUE_UNCHANGED"}, [1, 2], [2, 1]));
-    assert('True if object has not changed except the order of the attributes',
-        true, constraintIsValid({"type": "VALUE_UNCHANGED"}, {'a': 1, 'b': [2, 3]}, {'b': [2, 3], 'a': 1}));
-    assert('False if sequence of array elements of an object attribute has changed',
-        false, constraintIsValid({"type": "VALUE_UNCHANGED"}, {'a': 1, 'b': [2, 3]}, {'b': [3, 2], 'a': 1}));
-}
-
-function testInflatePropertyIfMultiIndexed() {
-    log(">>> Testing inflatePropertyIfMultiIndexed");
-    assert('*.index is inflated correct',
-        ["a[0]", "a[1]", "a[2]", "a[3]", "a[4]"], inflatePropertyIfMultiIndexed("a[*]", {a: [0, 0, 0, 0, 0]}));
-    assert('start/step-index is inflated correct',
-        ["a[1]", "a[3]"], inflatePropertyIfMultiIndexed("a[1/2]", {a: [0, 0, 0, 0, 0]}));
-    assert('range-index is inflated correct',
-        ["a[1]", "a[2]", "a[3]"], inflatePropertyIfMultiIndexed("a[1-3]", {a: [0, 0, 0, 0, 0]}));
-    assert('list-index is inflated correct',
-        ["a[1]", "a[4]"], inflatePropertyIfMultiIndexed("a[1,4]", {a: [0, 0, 0, 0, 0]}));
-    assert('combined-index is inflated correct',
-        ["a[0].b[0].c[2].d", "a[1].b[0].c[2].d", "a[1].b[1].c[2].d"],
-        inflatePropertyIfMultiIndexed("a[*].b[0/1].c[2].d", {a: [{b: [0]}, {b: [0, 0]}]}));
+function testGetAllowedPropertyValues() {
+    log(">>> Testing getAllowedPropertyValues");
+    assert('undefined allowed properties if no EQUALS_ANY* constraint exist',
+        undefined, getAllowedPropertyValues("sometype", "number1", {"number1": 1}));
+    assert('allowed properties if (nullable) EQUALS_ANY content constraint exist',
+        ["one", "two", null], getAllowedPropertyValues("sometype", "someString", {"notRelevant": 1}, ["aaa"]));
+    assert('allowed properties if EQUALS_ANY_REF content constraint exist',
+        ["one", "two", "four", "six"], getAllowedPropertyValues("sometype", "someString",
+            {"stringArray": ["one", "two"], "stringArray2": ["three", "four", "five", "six", "seven"]}, ["bbb"]));
+    assert('allowed properties if EQUALS_ANY update constraint exist',
+        ["foo", "bar"], getAllowedPropertyValues("sometype", "someString", {"someString": "foo"}));
 }
 
 function testDefaultMessagePrefix() {
@@ -731,6 +738,47 @@ function testDefaultMessagePrefix() {
     setDefaultUpdateMessagePrefix("baz");
     assert('setDefaultUpdateMessagePrefix o.k.',
         "baz", getDefaultUpdateMessagePrefix("baz"));
+}
+
+function testSetValidationRules() {
+    log(">>> Testing setValidationRules");
+    assert('rules must not be undefined',
+        false, setValidationRules(undefined));
+    assert('rules must not be null',
+        false, setValidationRules(null));
+    assert('rules must be an object',
+        false, setValidationRules("wrong"));
+    assert('schema version must match',
+        false, setValidationRules({"schemaVersion": "-1"}));
+    assert('given mandatoryRules key must be object',
+        false, setValidationRules({"schemaVersion": "0.12", "mandatoryRules": null}));
+    assert('given immutableRules key must be object',
+        false, setValidationRules({"schemaVersion": "0.12", "immutableRules": undefined}));
+    assert('given contentRules key must be object',
+        false, setValidationRules({"schemaVersion": "0.12", "contentRules": 42}));
+    assert('given updateRules key must be object',
+        false, setValidationRules({"schemaVersion": "0.12", "updateRules": []}));
+
+    assert('minimal valid json without any rule keys',
+        true, setValidationRules({"schemaVersion": "0.12"}));
+    assert('minimal valid json with "empty" any rule keys',
+        true, setValidationRules({"schemaVersion": "0.12",
+            "mandatoryRules": {}, "immutableRules": {}, "contentRules": {}, "updateRules": {}}));
+}
+
+function testInflatePropertyIfMultiIndexed() {
+    log(">>> Testing inflatePropertyIfMultiIndexed");
+    assert('*.index is inflated correct',
+        ["a[0]", "a[1]", "a[2]", "a[3]", "a[4]"], inflatePropertyIfMultiIndexed("a[*]", {a: [0, 0, 0, 0, 0]}));
+    assert('start/step-index is inflated correct',
+        ["a[1]", "a[3]"], inflatePropertyIfMultiIndexed("a[1/2]", {a: [0, 0, 0, 0, 0]}));
+    assert('range-index is inflated correct',
+        ["a[1]", "a[2]", "a[3]"], inflatePropertyIfMultiIndexed("a[1-3]", {a: [0, 0, 0, 0, 0]}));
+    assert('list-index is inflated correct',
+        ["a[1]", "a[4]"], inflatePropertyIfMultiIndexed("a[1,4]", {a: [0, 0, 0, 0, 0]}));
+    assert('combined-index is inflated correct',
+        ["a[0].b[0].c[2].d", "a[1].b[0].c[2].d", "a[1].b[1].c[2].d"],
+        inflatePropertyIfMultiIndexed("a[*].b[0/1].c[2].d", {a: [{b: [0]}, {b: [0, 0]}]}));
 }
 
 </script>

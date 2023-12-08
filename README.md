@@ -1,9 +1,13 @@
 # Cross Language Validation ECMAScript 6
 This JavaScript implements the client side part of the 
-[Cross Language Validation Schema](https://github.com/stephan-double-u/cross-language-validation-schema)
-i.e. it:
+[Cross Language Validation Schema](https://github.com/stephan-double-u/cross-language-validation-schema) (version 0.12),
+i.e. it
 - is able to consume JSON instances of that schema
 - provides an API to validate the validation rules defined in that instances against the relevant objects
+
+&#9658; See the &#10169; [CLV Demo App](https://github.com/stephan-double-u/cross-language-validation-demo) as a
+comprehensive example of how to use the framework. It's also a good starting point to see how to write different
+types of rules.
 
 TODO: improve documentation
 
